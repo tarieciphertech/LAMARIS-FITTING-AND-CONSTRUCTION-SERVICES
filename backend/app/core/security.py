@@ -1,0 +1,43 @@
+from datetime import datetime, timedelta, timezone
+
+import bcrypt
+import jwt
+from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
+from sqlalchemy.orm import Session
+
+from app.core.config import get_settings
+from app.db.models import User
+from app.db.session import get_db
+
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+
+
+def hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+
+
+def verify_password(password: str, password_hash: str) -> bool:
+    return bcrypt.checkpw(password.encode(), password_hash.encode())
+
+
+def create_access_token(user_id: int) -> str:
+    settings = get_settings()
+    expires = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes)
+    return jwt.encode({"sub": str(user_id), "exp": expires}, settings.jwt_secret, algorithm="HS256")
+
+
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
+    settings = get_settings()
+    credentials_error = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired credentials")
+    try:
+        payload = jwt.decode(token, settings.jwt_secret, algorithms=["HS256"])
+        user_id = int(payload.get("sub", ""))
+    except (jwt.PyJWTError, ValueError, TypeError):
+        raise credentials_error
+
+    user = db.get(User, user_id)
+    if not user or not user.is_active:
+        raise credentials_error
+    return user
