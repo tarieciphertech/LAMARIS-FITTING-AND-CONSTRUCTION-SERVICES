@@ -1,9 +1,11 @@
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
-from app.api.routes import auth, enquiries, properties
+from app.api.routes import auth, enquiries, properties, uploads
 from app.core.config import get_settings
 from app.db import models
 from app.db.session import Base, engine
@@ -19,10 +21,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Temporary MVP foundation. Alembic migrations will replace this in production.
 Base.metadata.create_all(bind=engine)
+
 app.include_router(auth.router, prefix="/api")
 app.include_router(properties.router, prefix="/api")
 app.include_router(enquiries.router, prefix="/api")
+app.include_router(uploads.router, prefix="/api")
+
+upload_path = Path(settings.upload_dir)
+upload_path.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=upload_path), name="uploads")
 
 
 @app.get("/api/health")
@@ -30,9 +39,3 @@ def health():
     with engine.connect() as connection:
         connection.execute(text("SELECT 1"))
     return {"status": "ok", "service": "lamaris-api"}
-
-
-try:
-    app.mount("/uploads", StaticFiles(directory=settings.upload_dir), name="uploads")
-except RuntimeError:
-    pass
