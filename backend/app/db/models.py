@@ -1,7 +1,7 @@
 from datetime import datetime
 from enum import Enum
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
@@ -28,6 +28,11 @@ class User(Base):
 
 class Property(Base):
     __tablename__ = "properties"
+    __table_args__ = (
+        CheckConstraint("bedrooms IS NULL OR bedrooms >= 0", name="ck_properties_bedrooms_nonnegative"),
+        CheckConstraint("rooms IS NULL OR rooms >= 0", name="ck_properties_rooms_nonnegative"),
+        Index("ix_properties_status_featured_created", "status", "featured", "created_at"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     title: Mapped[str] = mapped_column(String(255), index=True)
@@ -46,11 +51,19 @@ class Property(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    images: Mapped[list["PropertyImage"]] = relationship(back_populates="property", cascade="all, delete-orphan")
+    images: Mapped[list["PropertyImage"]] = relationship(
+        back_populates="property",
+        cascade="all, delete-orphan",
+        order_by="PropertyImage.sort_order, PropertyImage.id",
+    )
 
 
 class PropertyImage(Base):
     __tablename__ = "property_images"
+    __table_args__ = (
+        CheckConstraint("sort_order >= 0", name="ck_property_images_sort_order_nonnegative"),
+        Index("ix_property_images_property_order", "property_id", "sort_order"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     property_id: Mapped[int] = mapped_column(ForeignKey("properties.id", ondelete="CASCADE"), index=True)
