@@ -45,6 +45,11 @@ export const adminApi = {
     return request('/api/uploads/image', { method: 'POST', body: form })
   },
   attachImage: (propertyId, url, altText) => request(`/api/properties/${propertyId}/images?url=${encodeURIComponent(url)}${altText ? `&alt_text=${encodeURIComponent(altText)}` : ''}`, { method: 'POST' }),
+  deleteImage: (imageId) => request(`/api/properties/images/${imageId}`, { method: 'DELETE' }),
+  reorderImages: (propertyId, imageIds) => request(`/api/properties/${propertyId}/images/reorder`, {
+    method: 'POST',
+    body: JSON.stringify(imageIds),
+  }),
   enquiries: () => request('/api/enquiries'),
 }
 
