@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
@@ -26,6 +28,16 @@ def _validate_image_bytes(content_type: str | None, data: bytes) -> str:
     if content_type == "image/webp" and not (data.startswith(b"RIFF") and data[8:12] == b"WEBP"):
         raise HTTPException(status_code=415, detail="Uploaded file is not a valid WebP")
     return ALLOWED_TYPES[content_type]
+
+
+def _remove_local_upload(url: str) -> None:
+    prefix = "/uploads/"
+    if not url.startswith(prefix):
+        return
+    root = Path(settings.upload_dir).resolve()
+    candidate = (root / url.removeprefix(prefix)).resolve()
+    if candidate.is_file() and root in candidate.parents:
+        candidate.unlink()
 
 
 @router.get("", response_model=list[PropertyOut])
@@ -71,8 +83,10 @@ def delete_image(image_id: int, db: Session = Depends(get_db), _: User = Depends
     image = db.get(PropertyImage, image_id)
     if not image:
         raise HTTPException(status_code=404, detail="Property image not found")
+    url = image.url
     db.delete(image)
     db.commit()
+    _remove_local_upload(url)
 
 
 @router.get("/{property_id}", response_model=PropertyOut)
@@ -173,7 +187,6 @@ async def upload_property_image(
         raise HTTPException(status_code=413, detail="Image must be 10 MB or smaller")
     extension = _validate_image_bytes(file.content_type, data)
 
-    from pathlib import Path
     from uuid import uuid4
 
     directory = Path(settings.upload_dir) / "properties" / str(property_id)
