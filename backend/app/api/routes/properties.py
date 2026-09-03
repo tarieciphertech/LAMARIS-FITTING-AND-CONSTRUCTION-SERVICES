@@ -1,13 +1,31 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy import or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
+from app.core.config import get_settings
 from app.core.security import get_current_user
 from app.db.models import Property, PropertyImage, PropertyStatus, User
 from app.db.session import get_db
 from app.schemas import PropertyCreate, PropertyOut
 
 router = APIRouter(prefix="/properties", tags=["properties"])
+settings = get_settings()
+ALLOWED_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
+MAX_IMAGE_BYTES = 10 * 1024 * 1024
+MAX_IMAGES_PER_PROPERTY = 30
+
+
+def _validate_image_bytes(content_type: str | None, data: bytes) -> str:
+    if content_type not in ALLOWED_TYPES:
+        raise HTTPException(status_code=415, detail="Only JPEG, PNG and WebP images are allowed")
+    if content_type == "image/jpeg" and not data.startswith(b"\xff\xd8\xff"):
+        raise HTTPException(status_code=415, detail="Uploaded file is not a valid JPEG")
+    if content_type == "image/png" and not data.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise HTTPException(status_code=415, detail="Uploaded file is not a valid PNG")
+    if content_type == "image/webp" and not (data.startswith(b"RIFF") and data[8:12] == b"WEBP"):
+        raise HTTPException(status_code=415, detail="Uploaded file is not a valid WebP")
+    return ALLOWED_TYPES[content_type]
 
 
 @router.get("", response_model=list[PropertyOut])
@@ -24,9 +42,11 @@ def list_properties(
     query = select(Property).options(selectinload(Property.images)).order_by(Property.created_at.desc(), Property.id.desc())
 
     if status:
-        if status not in {item.value for item in PropertyStatus}:
+        try:
+            status_value = PropertyStatus(status.strip().lower())
+        except ValueError:
             raise HTTPException(status_code=422, detail="Invalid property status")
-        query = query.where(Property.status == status)
+        query = query.where(Property.status == status_value)
     if q and q.strip():
         term = f"%{q.strip()}%"
         query = query.where(or_(
@@ -46,7 +66,6 @@ def list_properties(
     return list(db.scalars(query).unique().all())
 
 
-# Static image routes must be declared before /{property_id} so "images" is not parsed as an integer.
 @router.delete("/images/{image_id}", status_code=204)
 def delete_image(image_id: int, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
     image = db.get(PropertyImage, image_id)
@@ -68,13 +87,16 @@ def get_property(property_id: int, db: Session = Depends(get_db)):
 def create_property(payload: PropertyCreate, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
     if db.scalar(select(Property).where(Property.slug == payload.slug)):
         raise HTTPException(status_code=409, detail="Slug already exists")
-    try:
-        status_value = PropertyStatus(payload.status)
-    except ValueError:
-        raise HTTPException(status_code=422, detail="Invalid property status")
+    status_value = PropertyStatus(payload.status)
     item = Property(**payload.model_dump(exclude={"status"}), status=status_value)
+    if status_value == PropertyStatus.archived:
+        item.featured = False
     db.add(item)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Property could not be created because a unique value already exists")
     db.refresh(item)
     return item
 
@@ -87,16 +109,17 @@ def update_property(property_id: int, payload: PropertyCreate, db: Session = Dep
     duplicate = db.scalar(select(Property).where(Property.slug == payload.slug, Property.id != property_id))
     if duplicate:
         raise HTTPException(status_code=409, detail="Slug already exists")
-    try:
-        status_value = PropertyStatus(payload.status)
-    except ValueError:
-        raise HTTPException(status_code=422, detail="Invalid property status")
+    status_value = PropertyStatus(payload.status)
     for key, value in payload.model_dump(exclude={"status"}).items():
         setattr(item, key, value)
     item.status = status_value
     if status_value == PropertyStatus.archived:
         item.featured = False
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Property could not be updated because a unique value already exists")
     db.refresh(item)
     return item
 
@@ -122,9 +145,57 @@ def attach_image(
     item = db.scalar(select(Property).options(selectinload(Property.images)).where(Property.id == property_id))
     if not item:
         raise HTTPException(status_code=404, detail="Property not found")
+    if len(item.images) >= MAX_IMAGES_PER_PROPERTY:
+        raise HTTPException(status_code=422, detail=f"A property can have at most {MAX_IMAGES_PER_PROPERTY} images")
     next_order = max((image.sort_order for image in item.images), default=-1) + 1
-    db.add(PropertyImage(property_id=property_id, url=url, alt_text=alt_text, sort_order=next_order))
+    db.add(PropertyImage(property_id=property_id, url=url.strip(), alt_text=alt_text.strip() if alt_text else None, sort_order=next_order))
     db.commit()
+    db.refresh(item)
+    return item
+
+
+@router.post("/{property_id}/images/upload", response_model=PropertyOut)
+async def upload_property_image(
+    property_id: int,
+    file: UploadFile = File(...),
+    alt_text: str | None = Query(default=None, max_length=255),
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    item = db.scalar(select(Property).options(selectinload(Property.images)).where(Property.id == property_id))
+    if not item:
+        raise HTTPException(status_code=404, detail="Property not found")
+    if len(item.images) >= MAX_IMAGES_PER_PROPERTY:
+        raise HTTPException(status_code=422, detail=f"A property can have at most {MAX_IMAGES_PER_PROPERTY} images")
+
+    data = await file.read(MAX_IMAGE_BYTES + 1)
+    if len(data) > MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="Image must be 10 MB or smaller")
+    extension = _validate_image_bytes(file.content_type, data)
+
+    from pathlib import Path
+    from uuid import uuid4
+
+    directory = Path(settings.upload_dir) / "properties" / str(property_id)
+    directory.mkdir(parents=True, exist_ok=True)
+    filename = f"{uuid4().hex}{extension}"
+    path = directory / filename
+    path.write_bytes(data)
+
+    next_order = max((image.sort_order for image in item.images), default=-1) + 1
+    image = PropertyImage(
+        property_id=property_id,
+        url=f"/uploads/properties/{property_id}/{filename}",
+        alt_text=alt_text.strip() if alt_text else item.title,
+        sort_order=next_order,
+    )
+    db.add(image)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        path.unlink(missing_ok=True)
+        raise HTTPException(status_code=500, detail="Image could not be saved")
     db.refresh(item)
     return item
 
