@@ -17,39 +17,31 @@ async function request(path, options = {}) {
   return data
 }
 
+export const api = {
+  properties: (params = '') => request(`/api/properties${params ? `?${params}` : ''}`),
+  property: (id) => request(`/api/properties/${id}`),
+  enquiry: (payload) => request('/api/enquiries', { method: 'POST', body: JSON.stringify(payload) }),
+}
+
 export const adminApi = {
-  login: (email, password) => request('/api/auth/login', {
-    method: 'POST',
-    body: JSON.stringify({ email, password }),
-  }),
+  login: (email, password) => request('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
   me: () => request('/api/auth/me'),
-  changePassword: (current_password, new_password) => request('/api/auth/change-password', {
-    method: 'POST',
-    body: JSON.stringify({ current_password, new_password }),
-  }),
+  changePassword: (current_password, new_password) => request('/api/auth/change-password', { method: 'POST', body: JSON.stringify({ current_password, new_password }) }),
   logout: () => request('/api/auth/logout', { method: 'POST' }),
   properties: (params = '') => request(`/api/properties${params ? `?${params}` : ''}`),
   property: (id) => request(`/api/properties/${id}`),
-  createProperty: (payload) => request('/api/properties', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  }),
-  updateProperty: (id, payload) => request(`/api/properties/${id}`, {
-    method: 'PATCH',
-    body: JSON.stringify(payload),
-  }),
+  createProperty: (payload) => request('/api/properties', { method: 'POST', body: JSON.stringify(payload) }),
+  updateProperty: (id, payload) => request(`/api/properties/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
   archiveProperty: (id) => request(`/api/properties/${id}`, { method: 'DELETE' }),
-  uploadImage: (file) => {
+  uploadPropertyImage: (propertyId, file, altText = '') => {
     const form = new FormData()
     form.append('file', file)
-    return request('/api/uploads/image', { method: 'POST', body: form })
+    const query = altText ? `?alt_text=${encodeURIComponent(altText)}` : ''
+    return request(`/api/properties/${propertyId}/images/upload${query}`, { method: 'POST', body: form })
   },
-  attachImage: (propertyId, url, altText) => request(`/api/properties/${propertyId}/images?url=${encodeURIComponent(url)}${altText ? `&alt_text=${encodeURIComponent(altText)}` : ''}`, { method: 'POST' }),
+  attachImage: (propertyId, url, altText = '') => request(`/api/properties/${propertyId}/images?url=${encodeURIComponent(url)}${altText ? `&alt_text=${encodeURIComponent(altText)}` : ''}`, { method: 'POST' }),
   deleteImage: (imageId) => request(`/api/properties/images/${imageId}`, { method: 'DELETE' }),
-  reorderImages: (propertyId, imageIds) => request(`/api/properties/${propertyId}/images/reorder`, {
-    method: 'POST',
-    body: JSON.stringify(imageIds),
-  }),
+  reorderImages: (propertyId, imageIds) => request(`/api/properties/${propertyId}/images/reorder`, { method: 'POST', body: JSON.stringify(imageIds) }),
   enquiries: () => request('/api/enquiries'),
 }
 
