@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import get_settings
-from app.core.security import get_current_user
+from app.core.security import get_current_admin
 from app.db.models import Property, PropertyImage, PropertyStatus, User
 from app.db.session import get_db
 from app.schemas import PropertyCreate, PropertyOut
@@ -79,7 +79,7 @@ def list_properties(
 
 
 @router.delete("/images/{image_id}", status_code=204)
-def delete_image(image_id: int, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+def delete_image(image_id: int, db: Session = Depends(get_db), _: User = Depends(get_current_admin)):
     image = db.get(PropertyImage, image_id)
     if not image:
         raise HTTPException(status_code=404, detail="Property image not found")
@@ -98,7 +98,7 @@ def get_property(property_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("", response_model=PropertyOut, status_code=201)
-def create_property(payload: PropertyCreate, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+def create_property(payload: PropertyCreate, db: Session = Depends(get_db), _: User = Depends(get_current_admin)):
     if db.scalar(select(Property).where(Property.slug == payload.slug)):
         raise HTTPException(status_code=409, detail="Slug already exists")
     status_value = PropertyStatus(payload.status)
@@ -116,7 +116,7 @@ def create_property(payload: PropertyCreate, db: Session = Depends(get_db), _: U
 
 
 @router.patch("/{property_id}", response_model=PropertyOut)
-def update_property(property_id: int, payload: PropertyCreate, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+def update_property(property_id: int, payload: PropertyCreate, db: Session = Depends(get_db), _: User = Depends(get_current_admin)):
     item = db.scalar(select(Property).where(Property.id == property_id))
     if not item:
         raise HTTPException(status_code=404, detail="Property not found")
@@ -139,7 +139,7 @@ def update_property(property_id: int, payload: PropertyCreate, db: Session = Dep
 
 
 @router.delete("/{property_id}", status_code=204)
-def archive_property(property_id: int, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+def archive_property(property_id: int, db: Session = Depends(get_db), _: User = Depends(get_current_admin)):
     item = db.get(Property, property_id)
     if not item:
         raise HTTPException(status_code=404, detail="Property not found")
@@ -154,7 +154,7 @@ def attach_image(
     url: str = Query(min_length=1, max_length=1000),
     alt_text: str | None = Query(default=None, max_length=255),
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(get_current_admin),
 ):
     item = db.scalar(select(Property).options(selectinload(Property.images)).where(Property.id == property_id))
     if not item:
@@ -174,7 +174,7 @@ async def upload_property_image(
     file: UploadFile = File(...),
     alt_text: str | None = Query(default=None, max_length=255),
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(get_current_admin),
 ):
     item = db.scalar(select(Property).options(selectinload(Property.images)).where(Property.id == property_id))
     if not item:
@@ -214,7 +214,7 @@ async def upload_property_image(
 
 
 @router.post("/{property_id}/images/reorder", response_model=PropertyOut)
-def reorder_images(property_id: int, image_ids: list[int], db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+def reorder_images(property_id: int, image_ids: list[int], db: Session = Depends(get_db), _: User = Depends(get_current_admin)):
     item = db.scalar(select(Property).options(selectinload(Property.images)).where(Property.id == property_id))
     if not item:
         raise HTTPException(status_code=404, detail="Property not found")
