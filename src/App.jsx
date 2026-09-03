@@ -19,8 +19,12 @@ import { constructionServices, EMAIL, images, PHONE, PHONE_2, properties, proper
 const whatsappUrl = (message = 'Hello Lamaris, I would like to enquire about a property.') =>
   `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(message)}`
 
+// Vite's BASE_URL keeps the logo working both locally and on the repository's
+// GitHub Pages sub-path (/LAMARIS-FITTING-AND-CONSTRUCTION-SERVICES/).
+const logoUrl = `${import.meta.env.BASE_URL}lamaris-logo.svg`
+
 function Brand({ compact = false }) {
-  return <span className={`brand ${compact ? 'brand-compact' : ''}`}><img src="/lamaris-logo.svg" alt="LAMARIS Fitting and Construction Services" /></span>
+  return <span className={`brand ${compact ? 'brand-compact' : ''}`}><img src={logoUrl} alt="LAMARIS Fitting and Construction Services" /></span>
 }
 
 function App() {
