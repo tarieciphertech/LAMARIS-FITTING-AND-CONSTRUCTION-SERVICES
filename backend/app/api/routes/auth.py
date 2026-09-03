@@ -23,7 +23,12 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
 
 @router.get("/me")
 def me(user: User = Depends(get_current_user)):
-    return {"id": user.id, "email": user.email, "must_change_password": user.must_change_password}
+    return {
+        "id": user.id,
+        "email": user.email,
+        "role": user.role,
+        "must_change_password": user.must_change_password,
+    }
 
 
 @router.post("/change-password", response_model=TokenOut)
