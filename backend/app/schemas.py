@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class PropertyImageOut(BaseModel):
@@ -59,3 +59,21 @@ class TokenOut(BaseModel):
     access_token: str
     token_type: str = "bearer"
     must_change_password: bool
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(min_length=1)
+    new_password: str = Field(min_length=12, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, value: str) -> str:
+        if value.strip() != value:
+            raise ValueError("Password must not start or end with whitespace")
+        if not any(char.islower() for char in value):
+            raise ValueError("Password must contain a lowercase letter")
+        if not any(char.isupper() for char in value):
+            raise ValueError("Password must contain an uppercase letter")
+        if not any(char.isdigit() for char in value):
+            raise ValueError("Password must contain a number")
+        return value
