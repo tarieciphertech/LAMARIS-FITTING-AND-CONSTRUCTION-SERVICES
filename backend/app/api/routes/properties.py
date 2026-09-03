@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, or_, select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.security import get_current_user
@@ -44,6 +44,16 @@ def list_properties(
 
     query = query.offset(skip).limit(limit)
     return list(db.scalars(query).unique().all())
+
+
+# Static image routes must be declared before /{property_id} so "images" is not parsed as an integer.
+@router.delete("/images/{image_id}", status_code=204)
+def delete_image(image_id: int, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+    image = db.get(PropertyImage, image_id)
+    if not image:
+        raise HTTPException(status_code=404, detail="Property image not found")
+    db.delete(image)
+    db.commit()
 
 
 @router.get("/{property_id}", response_model=PropertyOut)
@@ -102,7 +112,13 @@ def archive_property(property_id: int, db: Session = Depends(get_db), _: User = 
 
 
 @router.post("/{property_id}/images", response_model=PropertyOut)
-def attach_image(property_id: int, url: str = Query(min_length=1, max_length=1000), alt_text: str | None = Query(default=None, max_length=255), db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+def attach_image(
+    property_id: int,
+    url: str = Query(min_length=1, max_length=1000),
+    alt_text: str | None = Query(default=None, max_length=255),
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
     item = db.scalar(select(Property).options(selectinload(Property.images)).where(Property.id == property_id))
     if not item:
         raise HTTPException(status_code=404, detail="Property not found")
@@ -113,15 +129,6 @@ def attach_image(property_id: int, url: str = Query(min_length=1, max_length=100
     return item
 
 
-@router.delete("/images/{image_id}", status_code=204)
-def delete_image(image_id: int, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
-    image = db.get(PropertyImage, image_id)
-    if not image:
-        raise HTTPException(status_code=404, detail="Property image not found")
-    db.delete(image)
-    db.commit()
-
-
 @router.post("/{property_id}/images/reorder", response_model=PropertyOut)
 def reorder_images(property_id: int, image_ids: list[int], db: Session = Depends(get_db), _: User = Depends(get_current_user)):
     item = db.scalar(select(Property).options(selectinload(Property.images)).where(Property.id == property_id))
@@ -130,8 +137,9 @@ def reorder_images(property_id: int, image_ids: list[int], db: Session = Depends
     existing_ids = {image.id for image in item.images}
     if set(image_ids) != existing_ids or len(image_ids) != len(existing_ids):
         raise HTTPException(status_code=422, detail="image_ids must contain every image exactly once")
+    images_by_id = {image.id: image for image in item.images}
     for order, image_id in enumerate(image_ids):
-        next(image for image in item.images if image.id == image_id).sort_order = order
+        images_by_id[image_id].sort_order = order
     db.commit()
     db.refresh(item)
     return item
