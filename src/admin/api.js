@@ -23,6 +23,11 @@ export const adminApi = {
     body: JSON.stringify({ email, password }),
   }),
   me: () => request('/api/auth/me'),
+  changePassword: (current_password, new_password) => request('/api/auth/change-password', {
+    method: 'POST',
+    body: JSON.stringify({ current_password, new_password }),
+  }),
+  logout: () => request('/api/auth/logout', { method: 'POST' }),
   properties: (params = '') => request(`/api/properties${params ? `?${params}` : ''}`),
   property: (id) => request(`/api/properties/${id}`),
   createProperty: (payload) => request('/api/properties', {
