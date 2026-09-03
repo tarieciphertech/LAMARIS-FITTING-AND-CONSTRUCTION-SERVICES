@@ -1,6 +1,11 @@
+import re
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+PROPERTY_STATUSES = {"draft", "available", "sold", "archived"}
 
 
 class PropertyImageOut(BaseModel):
@@ -16,15 +21,51 @@ class PropertyCreate(BaseModel):
     slug: str = Field(min_length=2, max_length=255)
     property_type: str = Field(min_length=2, max_length=100)
     location: str = Field(min_length=2, max_length=255)
-    price: str | None = None
+    price: str | None = Field(default=None, max_length=100)
     bedrooms: int | None = Field(default=None, ge=0)
     rooms: int | None = Field(default=None, ge=0)
-    stand_size: str | None = None
-    description: str | None = None
-    features: str | None = None
-    paperwork_status: str | None = None
+    stand_size: str | None = Field(default=None, max_length=100)
+    description: str | None = Field(default=None, max_length=10000)
+    features: str | None = Field(default=None, max_length=10000)
+    paperwork_status: str | None = Field(default=None, max_length=255)
     status: str = "draft"
     featured: bool = False
+
+    @field_validator("title", "property_type", "location", mode="before")
+    @classmethod
+    def validate_required_text(cls, value: str) -> str:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("Value must not be blank")
+        return value.strip()
+
+    @field_validator("slug")
+    @classmethod
+    def validate_slug(cls, value: str) -> str:
+        value = value.strip().lower()
+        if not SLUG_RE.fullmatch(value):
+            raise ValueError("Slug must contain only lowercase letters, numbers and single hyphens")
+        return value
+
+    @field_validator("price", "stand_size", "description", "features", "paperwork_status", mode="before")
+    @classmethod
+    def normalize_optional_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        return value or None
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, value: str) -> str:
+        value = value.strip().lower()
+        if value not in PROPERTY_STATUSES:
+            raise ValueError("Invalid property status")
+        return value
+
+    @field_validator("featured")
+    @classmethod
+    def validate_featured(cls, value: bool) -> bool:
+        return bool(value)
 
 
 class PropertyOut(PropertyCreate):
@@ -32,7 +73,7 @@ class PropertyOut(PropertyCreate):
     id: int
     created_at: datetime
     updated_at: datetime | None = None
-    images: list[PropertyImageOut] = []
+    images: list[PropertyImageOut] = Field(default_factory=list)
 
 
 class EnquiryCreate(BaseModel):
