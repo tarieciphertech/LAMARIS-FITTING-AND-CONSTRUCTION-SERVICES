@@ -1,9 +1,10 @@
+from uuid import uuid4
+
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from app.core.config import get_settings
 from app.core.security import get_current_admin
 from app.db.models import Property, PropertyImage, PropertyStatus, User
 from app.db.session import get_db
@@ -11,7 +12,6 @@ from app.schemas import PropertyCreate, PropertyOut
 from app.services.storage import StorageError, delete_image, upload_image
 
 router = APIRouter(prefix="/properties", tags=["properties"])
-settings = get_settings()
 ALLOWED_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
 MAX_IMAGES_PER_PROPERTY = 30
@@ -64,20 +64,15 @@ async def delete_image_endpoint(image_id: int, db: Session = Depends(get_db), _:
     image = db.get(PropertyImage, image_id)
     if not image:
         raise HTTPException(status_code=404, detail="Property image not found")
+    if not image.storage_key:
+        raise HTTPException(status_code=422, detail="Image is missing its Cloudinary public ID")
 
-    if settings.supabase_storage_enabled:
-        valid_url = image.url.startswith(settings.supabase_storage_public_base_url + "/")
-    else:
-        valid_url = image.url.startswith("/uploads/")
-    if not valid_url:
-        raise HTTPException(status_code=422, detail="Invalid stored image URL")
-
-    url = image.url
+    storage_key = image.storage_key
     db.delete(image)
     try:
-        # Keep the DB transaction pending until Storage succeeds. A failed
+        # Keep the DB transaction pending until Cloudinary succeeds. A failed
         # remote deletion therefore leaves the DB reference intact.
-        await delete_image(url)
+        await delete_image(storage_key)
         db.commit()
     except StorageError as exc:
         db.rollback()
@@ -159,11 +154,7 @@ def attach_image(
         raise HTTPException(status_code=404, detail="Property not found")
     if len(item.images) >= MAX_IMAGES_PER_PROPERTY:
         raise HTTPException(status_code=422, detail=f"A property can have at most {MAX_IMAGES_PER_PROPERTY} images")
-    next_order = max((image.sort_order for image in item.images), default=-1) + 1
-    db.add(PropertyImage(property_id=property_id, url=url.strip(), alt_text=alt_text.strip() if alt_text else None, sort_order=next_order))
-    db.commit()
-    db.refresh(item)
-    return item
+    raise HTTPException(status_code=410, detail="Direct image URL attachment is disabled; upload the image through Cloudinary")
 
 
 @router.post("/{property_id}/images/upload", response_model=PropertyOut)
@@ -183,25 +174,29 @@ async def upload_property_image(
     data = await file.read(MAX_IMAGE_BYTES + 1)
     if len(data) > MAX_IMAGE_BYTES:
         raise HTTPException(status_code=413, detail="Image must be 10 MB or smaller")
-    extension = _validate_image_bytes(file.content_type, data)
+    _validate_image_bytes(file.content_type, data)
 
-    from uuid import uuid4
-    filename = f"{uuid4().hex}{extension}"
-    storage_path = f"properties/{property_id}/{filename}"
+    public_id = f"lamaris/properties/{property_id}/{uuid4().hex}"
     try:
-        public_url = await upload_image(storage_path, data, file.content_type or "application/octet-stream")
+        public_url, storage_key = await upload_image(public_id, data, file.content_type or "application/octet-stream")
     except StorageError as exc:
-        raise HTTPException(status_code=502, detail="Image could not be uploaded to storage") from exc
+        raise HTTPException(status_code=502, detail="Image could not be uploaded to Cloudinary") from exc
 
     next_order = max((image.sort_order for image in item.images), default=-1) + 1
-    image = PropertyImage(property_id=property_id, url=public_url, alt_text=alt_text.strip() if alt_text else item.title, sort_order=next_order)
+    image = PropertyImage(
+        property_id=property_id,
+        url=public_url,
+        storage_key=storage_key,
+        alt_text=alt_text.strip() if alt_text else item.title,
+        sort_order=next_order,
+    )
     db.add(image)
     try:
         db.commit()
     except Exception as exc:
         db.rollback()
         try:
-            await delete_image(public_url)
+            await delete_image(storage_key)
         except StorageError:
             pass
         raise HTTPException(status_code=500, detail="Image could not be saved") from exc
