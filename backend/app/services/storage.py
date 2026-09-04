@@ -43,14 +43,14 @@ async def delete_image(url: str) -> None:
     """Delete a stored image. Remote objects are removed from Supabase."""
     if settings.supabase_storage_enabled and url.startswith(settings.supabase_storage_public_base_url + "/"):
         path = url.removeprefix(settings.supabase_storage_public_base_url + "/")
-        endpoint = f"{settings.supabase_url.rstrip('/')}/storage/v1/object/{settings.supabase_storage_bucket}"
+        endpoint = f"{settings.supabase_url.rstrip('/')}/storage/v1/object/remove/{settings.supabase_storage_bucket}"
         headers = {
             "Authorization": f"Bearer {settings.supabase_service_role_key}",
             "apikey": settings.supabase_service_role_key,
             "Content-Type": "application/json",
         }
         async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.delete(endpoint, headers=headers, json={"prefixes": [path]})
+            response = await client.post(endpoint, headers=headers, json={"prefixes": [path]})
         if response.status_code not in (200, 204):
             raise StorageError(f"Supabase Storage delete failed ({response.status_code})")
         return
