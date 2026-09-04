@@ -1,11 +1,8 @@
-from pathlib import Path
-
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from app.core.config import get_settings
 from app.core.security import get_current_admin
 from app.db.models import Property, PropertyImage, PropertyStatus, User
 from app.db.session import get_db
@@ -13,7 +10,6 @@ from app.schemas import PropertyCreate, PropertyOut
 from app.services.storage import StorageError, delete_image, upload_image
 
 router = APIRouter(prefix="/properties", tags=["properties"])
-settings = get_settings()
 ALLOWED_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
 MAX_IMAGES_PER_PROPERTY = 30
@@ -43,7 +39,6 @@ def list_properties(
     db: Session = Depends(get_db),
 ):
     query = select(Property).options(selectinload(Property.images)).order_by(Property.created_at.desc(), Property.id.desc())
-
     if status:
         try:
             status_value = PropertyStatus(status.strip().lower())
@@ -52,21 +47,14 @@ def list_properties(
         query = query.where(Property.status == status_value)
     if q and q.strip():
         term = f"%{q.strip()}%"
-        query = query.where(or_(
-            Property.title.ilike(term),
-            Property.location.ilike(term),
-            Property.property_type.ilike(term),
-            Property.description.ilike(term),
-        ))
+        query = query.where(or_(Property.title.ilike(term), Property.location.ilike(term), Property.property_type.ilike(term), Property.description.ilike(term)))
     if property_type and property_type.strip():
         query = query.where(Property.property_type.ilike(f"%{property_type.strip()}%"))
     if location and location.strip():
         query = query.where(Property.location.ilike(f"%{location.strip()}%"))
     if featured is not None:
         query = query.where(Property.featured == featured)
-
-    query = query.offset(skip).limit(limit)
-    return list(db.scalars(query).unique().all())
+    return list(db.scalars(query.offset(skip).limit(limit)).unique().all())
 
 
 @router.delete("/images/{image_id}", status_code=204)
@@ -74,15 +62,27 @@ async def delete_image_endpoint(image_id: int, db: Session = Depends(get_db), _:
     image = db.get(PropertyImage, image_id)
     if not image:
         raise HTTPException(status_code=404, detail="Property image not found")
+
+    # Only allow deletion of objects belonging to this application's property
+    # namespace. This prevents a malformed DB URL from targeting an arbitrary
+    # object in the Supabase bucket.
+    if not image.url.startswith("http") and not image.url.startswith("/uploads/"):
+        raise HTTPException(status_code=422, detail="Invalid stored image URL")
+
     url = image.url
     db.delete(image)
-    db.commit()
     try:
+        # Keep the DB transaction pending until Storage succeeds. If Storage
+        # fails, rollback so we never intentionally lose the DB reference while
+        # the remote object still exists.
         await delete_image(url)
-    except StorageError:
-        # The DB record is already removed; a stale remote object is harmless and
-        # can be cleaned up later without breaking the admin operation.
-        pass
+        db.commit()
+    except StorageError as exc:
+        db.rollback()
+        raise HTTPException(status_code=502, detail="Image could not be removed from storage") from exc
+    except Exception:
+        db.rollback()
+        raise
 
 
 @router.get("/{property_id}", response_model=PropertyOut)
@@ -184,31 +184,25 @@ async def upload_property_image(
     extension = _validate_image_bytes(file.content_type, data)
 
     from uuid import uuid4
-
     filename = f"{uuid4().hex}{extension}"
     storage_path = f"properties/{property_id}/{filename}"
     try:
         public_url = await upload_image(storage_path, data, file.content_type or "application/octet-stream")
     except StorageError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise HTTPException(status_code=502, detail="Image could not be uploaded to storage") from exc
 
     next_order = max((image.sort_order for image in item.images), default=-1) + 1
-    image = PropertyImage(
-        property_id=property_id,
-        url=public_url,
-        alt_text=alt_text.strip() if alt_text else item.title,
-        sort_order=next_order,
-    )
+    image = PropertyImage(property_id=property_id, url=public_url, alt_text=alt_text.strip() if alt_text else item.title, sort_order=next_order)
     db.add(image)
     try:
         db.commit()
-    except Exception:
+    except Exception as exc:
         db.rollback()
         try:
             await delete_image(public_url)
         except StorageError:
             pass
-        raise HTTPException(status_code=500, detail="Image could not be saved")
+        raise HTTPException(status_code=500, detail="Image could not be saved") from exc
     db.refresh(item)
     return item
 
