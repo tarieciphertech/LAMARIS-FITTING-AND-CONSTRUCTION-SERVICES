@@ -12,6 +12,7 @@ class PropertyImageOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
     url: str
+    storage_key: str | None = None
     alt_text: str | None = None
     sort_order: int
 
