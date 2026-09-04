@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-from pathlib import Path
+import asyncio
+from io import BytesIO
 
-import httpx
+import cloudinary
+from cloudinary import uploader
 
 from app.core.config import get_settings
 
@@ -13,54 +15,76 @@ class StorageError(RuntimeError):
     pass
 
 
-def _object_url(path: str) -> str:
-    return f"{settings.supabase_storage_public_base_url}/{path}"
+def _configure() -> None:
+    if not settings.cloudinary_enabled:
+        raise StorageError("Cloudinary storage is not configured")
+    cloudinary.config(
+        cloud_name=settings.cloudinary_cloud_name,
+        api_key=settings.cloudinary_api_key,
+        api_secret=settings.cloudinary_api_secret,
+        secure=True,
+    )
 
 
-async def upload_image(path: str, data: bytes, content_type: str) -> str:
-    """Upload an image to Supabase Storage, or use local storage in development."""
-    if not settings.supabase_storage_enabled:
-        local_path = Path(settings.upload_dir) / path
-        local_path.parent.mkdir(parents=True, exist_ok=True)
-        local_path.write_bytes(data)
-        return f"/uploads/{path}"
-
-    url = f"{settings.supabase_url.rstrip('/')}/storage/v1/object/{settings.supabase_storage_bucket}/{path}"
-    headers = {
-        "Authorization": f"Bearer {settings.supabase_service_role_key}",
-        "apikey": settings.supabase_service_role_key,
-        "Content-Type": content_type,
-        "x-upsert": "false",
-    }
-    async with httpx.AsyncClient(timeout=30) as client:
-        response = await client.post(url, content=data, headers=headers)
-    if response.status_code not in (200, 201):
-        raise StorageError(f"Supabase Storage upload failed ({response.status_code})")
-    return _object_url(path)
+def _validate_public_id(public_id: str) -> str:
+    public_id = public_id.strip().strip("/")
+    if not public_id:
+        raise StorageError("Invalid Cloudinary public ID")
+    if ".." in public_id.split("/"):
+        raise StorageError("Invalid Cloudinary public ID")
+    if not public_id.startswith("lamaris/"):
+        raise StorageError("Invalid Cloudinary public ID")
+    return public_id
 
 
-async def delete_image(url: str) -> None:
-    """Delete one stored image from Supabase or the development filesystem."""
-    if settings.supabase_storage_enabled and url.startswith(settings.supabase_storage_public_base_url + "/"):
-        path = url.removeprefix(settings.supabase_storage_public_base_url + "/")
-        if not path or path.startswith("/") or ".." in Path(path).parts:
-            raise StorageError("Invalid Supabase Storage object path")
+def _upload_sync(public_id: str, data: bytes, content_type: str) -> tuple[str, str]:
+    _configure()
+    result = uploader.upload(
+        BytesIO(data),
+        public_id=public_id,
+        asset_folder="/".join(public_id.split("/")[:-1]),
+        resource_type="image",
+        overwrite=False,
+        unique_filename=False,
+        use_filename=False,
+        invalidate=True,
+    )
+    secure_url = result.get("secure_url")
+    returned_public_id = result.get("public_id")
+    if not secure_url or not returned_public_id:
+        raise StorageError("Cloudinary upload returned an incomplete response")
+    return secure_url, returned_public_id
 
-        endpoint = f"{settings.supabase_url.rstrip('/')}/storage/v1/object/{settings.supabase_storage_bucket}"
-        headers = {
-            "Authorization": f"Bearer {settings.supabase_service_role_key}",
-            "apikey": settings.supabase_service_role_key,
-            "Content-Type": "application/json",
-        }
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.delete(endpoint, headers=headers, json={"prefixes": [path]})
-        if response.status_code not in (200, 204):
-            raise StorageError(f"Supabase Storage delete failed ({response.status_code})")
-        return
 
-    prefix = "/uploads/"
-    if url.startswith(prefix):
-        root = Path(settings.upload_dir).resolve()
-        candidate = (root / url.removeprefix(prefix)).resolve()
-        if candidate.is_file() and root in candidate.parents:
-            candidate.unlink()
+async def upload_image(public_id: str, data: bytes, content_type: str) -> tuple[str, str]:
+    """Upload an image to Cloudinary and return (secure_url, public_id)."""
+    public_id = _validate_public_id(public_id)
+    try:
+        return await asyncio.to_thread(_upload_sync, public_id, data, content_type)
+    except StorageError:
+        raise
+    except Exception as exc:
+        raise StorageError("Cloudinary upload failed") from exc
+
+
+def _delete_sync(public_id: str) -> None:
+    _configure()
+    result = uploader.destroy(
+        public_id,
+        resource_type="image",
+        type="upload",
+        invalidate=True,
+    )
+    if result.get("result") not in {"ok", "not found"}:
+        raise StorageError(f"Cloudinary delete failed: {result.get('result', 'unknown error')}")
+
+
+async def delete_image(public_id: str) -> None:
+    """Delete one image from Cloudinary by its stored public ID."""
+    public_id = _validate_public_id(public_id)
+    try:
+        await asyncio.to_thread(_delete_sync, public_id)
+    except StorageError:
+        raise
+    except Exception as exc:
+        raise StorageError("Cloudinary delete failed") from exc
