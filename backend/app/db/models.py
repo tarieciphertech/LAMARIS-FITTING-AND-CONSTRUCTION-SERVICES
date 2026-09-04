@@ -69,6 +69,7 @@ class PropertyImage(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     property_id: Mapped[int] = mapped_column(ForeignKey("properties.id", ondelete="CASCADE"), index=True)
     url: Mapped[str] = mapped_column(String(1000))
+    storage_key: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     alt_text: Mapped[str | None] = mapped_column(String(255), nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
