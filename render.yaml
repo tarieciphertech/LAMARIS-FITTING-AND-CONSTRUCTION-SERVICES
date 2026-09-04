@@ -9,6 +9,8 @@ services:
     healthCheckPath: /api/health
     autoDeploy: true
     envVars:
+      - key: ENVIRONMENT
+        value: production
       - key: DATABASE_URL
         sync: false
       - key: JWT_SECRET
@@ -16,7 +18,7 @@ services:
       - key: ACCESS_TOKEN_EXPIRE_MINUTES
         value: "60"
       - key: CORS_ORIGINS
-        sync: false
+        value: "https://tarieciphertech.github.io"
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
