@@ -4,6 +4,7 @@ from sqlalchemy import text
 
 from app.api.routes import auth, enquiries, properties, uploads
 from app.core.config import get_settings
+from app.db.bootstrap import bootstrap_admin
 from app.db.session import engine
 
 settings = get_settings()
@@ -17,11 +18,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Database schema is managed by Alembic migrations, not by application startup.
+# Database schema is managed by Alembic migrations. Render runs migrations
+# before starting Uvicorn, so the bootstrap can safely create the first user.
 app.include_router(auth.router, prefix="/api")
 app.include_router(properties.router, prefix="/api")
 app.include_router(enquiries.router, prefix="/api")
 app.include_router(uploads.router, prefix="/api")
+
+
+@app.on_event("startup")
+def startup() -> None:
+    bootstrap_admin(settings)
+
 
 # Property images are stored in Cloudinary in production.
 # The legacy local /uploads static mount is intentionally disabled so the
