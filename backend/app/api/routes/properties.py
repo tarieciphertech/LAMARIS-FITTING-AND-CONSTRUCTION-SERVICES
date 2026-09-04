@@ -3,6 +3,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
+from app.core.config import get_settings
 from app.core.security import get_current_admin
 from app.db.models import Property, PropertyImage, PropertyStatus, User
 from app.db.session import get_db
@@ -10,6 +11,7 @@ from app.schemas import PropertyCreate, PropertyOut
 from app.services.storage import StorageError, delete_image, upload_image
 
 router = APIRouter(prefix="/properties", tags=["properties"])
+settings = get_settings()
 ALLOWED_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
 MAX_IMAGES_PER_PROPERTY = 30
@@ -63,18 +65,18 @@ async def delete_image_endpoint(image_id: int, db: Session = Depends(get_db), _:
     if not image:
         raise HTTPException(status_code=404, detail="Property image not found")
 
-    # Only allow deletion of objects belonging to this application's property
-    # namespace. This prevents a malformed DB URL from targeting an arbitrary
-    # object in the Supabase bucket.
-    if not image.url.startswith("http") and not image.url.startswith("/uploads/"):
+    if settings.supabase_storage_enabled:
+        valid_url = image.url.startswith(settings.supabase_storage_public_base_url + "/")
+    else:
+        valid_url = image.url.startswith("/uploads/")
+    if not valid_url:
         raise HTTPException(status_code=422, detail="Invalid stored image URL")
 
     url = image.url
     db.delete(image)
     try:
-        # Keep the DB transaction pending until Storage succeeds. If Storage
-        # fails, rollback so we never intentionally lose the DB reference while
-        # the remote object still exists.
+        # Keep the DB transaction pending until Storage succeeds. A failed
+        # remote deletion therefore leaves the DB reference intact.
         await delete_image(url)
         db.commit()
     except StorageError as exc:
