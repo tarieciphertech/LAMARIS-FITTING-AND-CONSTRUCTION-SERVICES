@@ -1,11 +1,11 @@
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.core.security import get_current_user
-from app.db.models import PropertyImage, User
+from app.db.models import User
 from app.db.session import Base, get_db
 from app.main import app
 import app.api.routes.properties as properties_route
@@ -61,9 +61,12 @@ def create_property(client):
     return response.json()["id"]
 
 
+def fake_png():
+    return b"\x89PNG\r\n\x1a\n" + b"test-image"
+
+
 def test_upload_persists_cloudinary_url_and_public_id(client, monkeypatch):
     property_id = create_property(client)
-    png = b"\x89PNG\r\n\x1a\n" + b"test-image"
 
     async def fake_upload(public_id, data, content_type):
         return f"https://res.cloudinary.com/demo/image/upload/{public_id}.png", public_id
@@ -71,7 +74,7 @@ def test_upload_persists_cloudinary_url_and_public_id(client, monkeypatch):
     monkeypatch.setattr(properties_route, "upload_image", fake_upload)
     response = client.post(
         f"/api/properties/{property_id}/images/upload",
-        files={"file": ("house.png", png, "image/png")},
+        files={"file": ("house.png", fake_png(), "image/png")},
     )
     assert response.status_code == 200
     image = response.json()["images"][0]
@@ -86,10 +89,9 @@ def test_storage_failure_does_not_create_image_record(client, monkeypatch):
         raise StorageError("storage unavailable")
 
     monkeypatch.setattr(properties_route, "upload_image", fail_upload)
-    png = b"\x89PNG\r\n\x1a\n" + b"test-image"
     response = client.post(
         f"/api/properties/{property_id}/images/upload",
-        files={"file": ("house.png", png, "image/png")},
+        files={"file": ("house.png", fake_png(), "image/png")},
     )
     assert response.status_code == 502
     assert client.get(f"/api/properties/{property_id}").json()["images"] == []
@@ -98,31 +100,25 @@ def test_storage_failure_does_not_create_image_record(client, monkeypatch):
 def test_deletion_removes_cloudinary_asset_and_database_record(client, monkeypatch):
     property_id = create_property(client)
     storage_key = f"lamaris/properties/{property_id}/photo"
-    response = client.post(
-        f"/api/properties/{property_id}/images/upload",
-        files={"file": ("house.png", b"\x89PNG\r\n\x1a\n" + b"test-image", "image/png")},
-    )
-    assert response.status_code == 502  # no real Cloudinary credentials in tests
-
-    db_engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
-    db_engine.dispose()
+    deleted = []
 
     async def fake_upload(public_id, data, content_type):
         return f"https://res.cloudinary.com/demo/image/upload/{public_id}.png", storage_key
 
     async def fake_delete(public_id):
-        assert public_id == storage_key
+        deleted.append(public_id)
 
     monkeypatch.setattr(properties_route, "upload_image", fake_upload)
     monkeypatch.setattr(properties_route, "delete_image", fake_delete)
     response = client.post(
         f"/api/properties/{property_id}/images/upload",
-        files={"file": ("house.png", b"\x89PNG\r\n\x1a\n" + b"test-image", "image/png")},
+        files={"file": ("house.png", fake_png(), "image/png")},
     )
     image_id = response.json()["images"][0]["id"]
 
     response = client.delete(f"/api/properties/images/{image_id}")
     assert response.status_code == 204
+    assert deleted == [storage_key]
     assert client.get(f"/api/properties/{property_id}").json()["images"] == []
 
 
@@ -140,7 +136,7 @@ def test_deletion_storage_failure_rolls_back_database_delete(client, monkeypatch
     monkeypatch.setattr(properties_route, "delete_image", fail_delete)
     response = client.post(
         f"/api/properties/{property_id}/images/upload",
-        files={"file": ("house.png", b"\x89PNG\r\n\x1a\n" + b"test-image", "image/png")},
+        files={"file": ("house.png", fake_png(), "image/png")},
     )
     image_id = response.json()["images"][0]["id"]
 
