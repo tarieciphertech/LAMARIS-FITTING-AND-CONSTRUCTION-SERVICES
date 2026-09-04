@@ -18,7 +18,7 @@ def _object_url(path: str) -> str:
 
 
 async def upload_image(path: str, data: bytes, content_type: str) -> str:
-    """Upload an image to Supabase Storage, or fall back to local storage in dev."""
+    """Upload an image to Supabase Storage, or use local storage in development."""
     if not settings.supabase_storage_enabled:
         local_path = Path(settings.upload_dir) / path
         local_path.parent.mkdir(parents=True, exist_ok=True)
@@ -40,17 +40,20 @@ async def upload_image(path: str, data: bytes, content_type: str) -> str:
 
 
 async def delete_image(url: str) -> None:
-    """Delete a stored image. Remote objects are removed from Supabase."""
+    """Delete one stored image from Supabase or the development filesystem."""
     if settings.supabase_storage_enabled and url.startswith(settings.supabase_storage_public_base_url + "/"):
         path = url.removeprefix(settings.supabase_storage_public_base_url + "/")
-        endpoint = f"{settings.supabase_url.rstrip('/')}/storage/v1/object/remove/{settings.supabase_storage_bucket}"
+        if not path or path.startswith("/") or ".." in Path(path).parts:
+            raise StorageError("Invalid Supabase Storage object path")
+
+        endpoint = f"{settings.supabase_url.rstrip('/')}/storage/v1/object/{settings.supabase_storage_bucket}"
         headers = {
             "Authorization": f"Bearer {settings.supabase_service_role_key}",
             "apikey": settings.supabase_service_role_key,
             "Content-Type": "application/json",
         }
         async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.post(endpoint, headers=headers, json={"prefixes": [path]})
+            response = await client.delete(endpoint, headers=headers, json={"prefixes": [path]})
         if response.status_code not in (200, 204):
             raise StorageError(f"Supabase Storage delete failed ({response.status_code})")
         return
