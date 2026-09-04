@@ -1,4 +1,4 @@
-const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/$/, '')
+const API_URL = (import.meta.env.VITE_API_URL || 'https://lamaris-api.onrender.com').replace(/\/$/, '')
 
 async function request(path, options = {}) {
   const token = localStorage.getItem('lamaris_admin_token')
