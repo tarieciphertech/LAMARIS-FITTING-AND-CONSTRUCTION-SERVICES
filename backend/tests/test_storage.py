@@ -5,79 +5,87 @@ import pytest
 import app.services.storage as storage
 
 
-class FakeResponse:
-    def __init__(self, status_code):
-        self.status_code = status_code
-
-
-class FakeClient:
-    response = FakeResponse(200)
+class FakeUploader:
     calls = []
+    upload_result = {
+        "secure_url": "https://res.cloudinary.com/demo/image/upload/lamaris/properties/7/photo",
+        "public_id": "lamaris/properties/7/photo",
+    }
+    destroy_result = {"result": "ok"}
 
-    def __init__(self, *args, **kwargs):
-        self.timeout = kwargs.get("timeout")
+    @classmethod
+    def upload(cls, *args, **kwargs):
+        cls.calls.append(("upload", args, kwargs))
+        return cls.upload_result
 
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, exc_type, exc, tb):
-        return False
-
-    async def post(self, url, **kwargs):
-        self.__class__.calls.append(("POST", url, kwargs))
-        return self.__class__.response
-
-    async def delete(self, url, **kwargs):
-        self.__class__.calls.append(("DELETE", url, kwargs))
-        return self.__class__.response
+    @classmethod
+    def destroy(cls, *args, **kwargs):
+        cls.calls.append(("destroy", args, kwargs))
+        return cls.destroy_result
 
 
 @pytest.fixture()
-def supabase_settings(monkeypatch):
-    monkeypatch.setattr(storage.settings, "supabase_url", "https://example.supabase.co")
-    monkeypatch.setattr(storage.settings, "supabase_service_role_key", "server-secret")
-    monkeypatch.setattr(storage.settings, "supabase_storage_bucket", "property-images")
-    FakeClient.calls = []
-    FakeClient.response = FakeResponse(200)
-    monkeypatch.setattr(storage.httpx, "AsyncClient", FakeClient)
+def cloudinary_settings(monkeypatch):
+    monkeypatch.setattr(storage.settings, "cloudinary_cloud_name", "demo")
+    monkeypatch.setattr(storage.settings, "cloudinary_api_key", "api-key")
+    monkeypatch.setattr(storage.settings, "cloudinary_api_secret", "api-secret")
+    FakeUploader.calls = []
+    FakeUploader.upload_result = {
+        "secure_url": "https://res.cloudinary.com/demo/image/upload/lamaris/properties/7/photo",
+        "public_id": "lamaris/properties/7/photo",
+    }
+    FakeUploader.destroy_result = {"result": "ok"}
+    monkeypatch.setattr(storage, "uploader", FakeUploader)
+    monkeypatch.setattr(storage.cloudinary, "config", lambda **kwargs: None)
     return storage.settings
 
 
-def test_supabase_upload_uses_object_endpoint_and_server_key(supabase_settings):
-    url = asyncio.run(storage.upload_image("properties/7/photo.jpg", b"jpeg", "image/jpeg"))
-    assert url == "https://example.supabase.co/storage/v1/object/public/property-images/properties/7/photo.jpg"
-    method, endpoint, kwargs = FakeClient.calls[0]
-    assert method == "POST"
-    assert endpoint.endswith("/storage/v1/object/property-images/properties/7/photo.jpg")
-    assert kwargs["content"] == b"jpeg"
-    assert kwargs["headers"]["Authorization"] == "Bearer server-secret"
-    assert kwargs["headers"]["x-upsert"] == "false"
+def test_cloudinary_upload_returns_secure_url_and_public_id(cloudinary_settings):
+    url, public_id = asyncio.run(
+        storage.upload_image("lamaris/properties/7/photo", b"jpeg", "image/jpeg")
+    )
+    assert url.startswith("https://res.cloudinary.com/")
+    assert public_id == "lamaris/properties/7/photo"
+    method, args, kwargs = FakeUploader.calls[0]
+    assert method == "upload"
+    assert kwargs["public_id"] == "lamaris/properties/7/photo"
+    assert kwargs["asset_folder"] == "lamaris/properties/7"
+    assert kwargs["resource_type"] == "image"
+    assert kwargs["overwrite"] is False
 
 
-def test_supabase_delete_uses_remove_object_endpoint(supabase_settings):
-    url = "https://example.supabase.co/storage/v1/object/public/property-images/properties/7/photo.jpg"
-    asyncio.run(storage.delete_image(url))
-    method, endpoint, kwargs = FakeClient.calls[0]
-    assert method == "DELETE"
-    assert endpoint.endswith("/storage/v1/object/property-images")
-    assert kwargs["json"] == {"prefixes": ["properties/7/photo.jpg"]}
-    assert kwargs["headers"]["Authorization"] == "Bearer server-secret"
+def test_cloudinary_delete_uses_public_id_and_invalidation(cloudinary_settings):
+    asyncio.run(storage.delete_image("lamaris/properties/7/photo"))
+    method, args, kwargs = FakeUploader.calls[0]
+    assert method == "destroy"
+    assert args[0] == "lamaris/properties/7/photo"
+    assert kwargs["resource_type"] == "image"
+    assert kwargs["type"] == "upload"
+    assert kwargs["invalidate"] is True
 
 
-def test_supabase_delete_rejects_path_traversal(supabase_settings):
-    url = "https://example.supabase.co/storage/v1/object/public/property-images/properties/../secret.jpg"
-    with pytest.raises(storage.StorageError, match="Invalid Supabase Storage object path"):
-        asyncio.run(storage.delete_image(url))
-    assert FakeClient.calls == []
+def test_cloudinary_rejects_path_traversal(cloudinary_settings):
+    with pytest.raises(storage.StorageError, match="Invalid Cloudinary public ID"):
+        asyncio.run(storage.delete_image("lamaris/properties/../secret"))
+    assert FakeUploader.calls == []
 
 
-def test_supabase_upload_failure_raises_storage_error(supabase_settings):
-    FakeClient.response = FakeResponse(500)
-    with pytest.raises(storage.StorageError, match="upload failed"):
-        asyncio.run(storage.upload_image("properties/7/photo.jpg", b"jpeg", "image/jpeg"))
+def test_cloudinary_rejects_non_lamaris_public_id(cloudinary_settings):
+    with pytest.raises(storage.StorageError, match="Invalid Cloudinary public ID"):
+        asyncio.run(storage.delete_image("other/properties/7/photo"))
+    assert FakeUploader.calls == []
 
 
-def test_supabase_delete_failure_raises_storage_error(supabase_settings):
-    FakeClient.response = FakeResponse(500)
-    with pytest.raises(storage.StorageError, match="delete failed"):
-        asyncio.run(storage.delete_image("https://example.supabase.co/storage/v1/object/public/property-images/properties/7/photo.jpg"))
+def test_cloudinary_upload_failure_raises_storage_error(cloudinary_settings):
+    def fail_upload(*args, **kwargs):
+        raise RuntimeError("network failure")
+
+    FakeUploader.upload = fail_upload
+    with pytest.raises(storage.StorageError, match="Cloudinary upload failed"):
+        asyncio.run(storage.upload_image("lamaris/properties/7/photo", b"jpeg", "image/jpeg"))
+
+
+def test_cloudinary_delete_failure_raises_storage_error(cloudinary_settings):
+    FakeUploader.destroy_result = {"result": "error"}
+    with pytest.raises(storage.StorageError, match="Cloudinary delete failed"):
+        asyncio.run(storage.delete_image("lamaris/properties/7/photo"))
