@@ -10,6 +10,7 @@ from app.core.security import get_current_admin
 from app.db.models import Property, PropertyImage, PropertyStatus, User
 from app.db.session import get_db
 from app.schemas import PropertyCreate, PropertyOut
+from app.services.storage import StorageError, delete_image, upload_image
 
 router = APIRouter(prefix="/properties", tags=["properties"])
 settings = get_settings()
@@ -28,16 +29,6 @@ def _validate_image_bytes(content_type: str | None, data: bytes) -> str:
     if content_type == "image/webp" and not (data.startswith(b"RIFF") and data[8:12] == b"WEBP"):
         raise HTTPException(status_code=415, detail="Uploaded file is not a valid WebP")
     return ALLOWED_TYPES[content_type]
-
-
-def _remove_local_upload(url: str) -> None:
-    prefix = "/uploads/"
-    if not url.startswith(prefix):
-        return
-    root = Path(settings.upload_dir).resolve()
-    candidate = (root / url.removeprefix(prefix)).resolve()
-    if candidate.is_file() and root in candidate.parents:
-        candidate.unlink()
 
 
 @router.get("", response_model=list[PropertyOut])
@@ -79,14 +70,19 @@ def list_properties(
 
 
 @router.delete("/images/{image_id}", status_code=204)
-def delete_image(image_id: int, db: Session = Depends(get_db), _: User = Depends(get_current_admin)):
+async def delete_image_endpoint(image_id: int, db: Session = Depends(get_db), _: User = Depends(get_current_admin)):
     image = db.get(PropertyImage, image_id)
     if not image:
         raise HTTPException(status_code=404, detail="Property image not found")
     url = image.url
     db.delete(image)
     db.commit()
-    _remove_local_upload(url)
+    try:
+        await delete_image(url)
+    except StorageError:
+        # The DB record is already removed; a stale remote object is harmless and
+        # can be cleaned up later without breaking the admin operation.
+        pass
 
 
 @router.get("/{property_id}", response_model=PropertyOut)
@@ -189,16 +185,17 @@ async def upload_property_image(
 
     from uuid import uuid4
 
-    directory = Path(settings.upload_dir) / "properties" / str(property_id)
-    directory.mkdir(parents=True, exist_ok=True)
     filename = f"{uuid4().hex}{extension}"
-    path = directory / filename
-    path.write_bytes(data)
+    storage_path = f"properties/{property_id}/{filename}"
+    try:
+        public_url = await upload_image(storage_path, data, file.content_type or "application/octet-stream")
+    except StorageError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     next_order = max((image.sort_order for image in item.images), default=-1) + 1
     image = PropertyImage(
         property_id=property_id,
-        url=f"/uploads/properties/{property_id}/{filename}",
+        url=public_url,
         alt_text=alt_text.strip() if alt_text else item.title,
         sort_order=next_order,
     )
@@ -207,7 +204,10 @@ async def upload_property_image(
         db.commit()
     except Exception:
         db.rollback()
-        path.unlink(missing_ok=True)
+        try:
+            await delete_image(public_url)
+        except StorageError:
+            pass
         raise HTTPException(status_code=500, detail="Image could not be saved")
     db.refresh(item)
     return item
