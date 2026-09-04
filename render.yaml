@@ -19,11 +19,9 @@ services:
         value: "60"
       - key: CORS_ORIGINS
         value: "https://tarieciphertech.github.io"
-      - key: SUPABASE_URL
+      - key: CLOUDINARY_CLOUD_NAME
         sync: false
-      - key: SUPABASE_SERVICE_ROLE_KEY
+      - key: CLOUDINARY_API_KEY
         sync: false
-      - key: SUPABASE_STORAGE_BUCKET
-        value: property-images
-      - key: UPLOAD_DIR
-        value: uploads
+      - key: CLOUDINARY_API_SECRET
+        sync: false
