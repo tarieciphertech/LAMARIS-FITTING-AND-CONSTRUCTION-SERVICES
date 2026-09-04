@@ -99,9 +99,11 @@ Validation includes non-blank required fields, normalized lowercase slugs, suppo
 
 ## Image storage
 
-Development currently uses the configured `UPLOAD_DIR` filesystem and serves it through `/uploads`. Uploaded property images are stored under `UPLOAD_DIR/properties/{property_id}/` with generated filenames; original filenames are never trusted for storage paths.
+Development uses the configured `UPLOAD_DIR` filesystem. Production uses the `property-images` Supabase Storage bucket through the server-only service-role key. Property objects use the `properties/{property_id}/{generated_filename}` namespace.
 
-For production on an ephemeral hosting platform, move `UPLOAD_DIR` to durable object storage (for example S3-compatible storage) before launch. The database stores the resulting public image URL and gallery order, so the storage implementation can be replaced without changing the property model.
+The database stores the public object URL and gallery order. Uploads write to Storage before the database record is committed; if the database write fails, the uploaded object is cleaned up. Image deletion keeps the database transaction pending until the Storage deletion succeeds, so a Storage failure rolls the DB deletion back.
+
+The production configuration deliberately fails fast when `ENVIRONMENT=production` but `DATABASE_URL`, `JWT_SECRET`, `SUPABASE_URL`, or `SUPABASE_SERVICE_ROLE_KEY` is missing.
 
 ## Production rule
 
