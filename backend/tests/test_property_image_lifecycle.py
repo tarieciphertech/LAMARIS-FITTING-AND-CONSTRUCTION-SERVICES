@@ -2,12 +2,12 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.core.security import get_current_user
-from app.db.models import PropertyImage, User
+from app.db.models import User
 from app.db.session import Base, get_db
 from app.main import app
 import app.api.routes.properties as properties_route
@@ -94,6 +94,7 @@ def test_storage_failure_does_not_create_image_record(client, monkeypatch):
         files={"file": ("house.png", png, "image/png")},
     )
     assert response.status_code == 502
+    assert client.get(f"/api/properties/{property_id}").json()["images"] == []
 
 
 def test_deletion_removes_storage_file_and_database_record(client, tmp_path):
@@ -111,8 +112,7 @@ def test_deletion_removes_storage_file_and_database_record(client, tmp_path):
 
     assert response.status_code == 204
     assert list(stored.glob("*.png")) == []
-    with next(app.dependency_overrides[get_db]()) as db:
-        assert db.scalar(select(PropertyImage).where(PropertyImage.id == image_id)) is None
+    assert client.get(f"/api/properties/{property_id}").json()["images"] == []
 
 
 def test_deletion_storage_failure_rolls_back_database_delete(client, monkeypatch):
@@ -130,5 +130,4 @@ def test_deletion_storage_failure_rolls_back_database_delete(client, monkeypatch
     response = client.delete(f"/api/properties/images/{image_id}")
 
     assert response.status_code == 502
-    with next(app.dependency_overrides[get_db]()) as db:
-        assert db.scalar(select(PropertyImage).where(PropertyImage.id == image_id)) is not None
+    assert client.get(f"/api/properties/{property_id}").json()["images"][0]["id"] == image_id
