@@ -7,7 +7,7 @@ from app.db.models import User
 from app.services.storage import StorageError, upload_image
 
 router = APIRouter(prefix="/uploads", tags=["uploads"])
-ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp": ".webp"}
+ALLOWED_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
 MAX_BYTES = 10 * 1024 * 1024
 
 
