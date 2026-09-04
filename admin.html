@@ -4,7 +4,37 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="robots" content="noindex,nofollow" />
+    <link rel="icon" type="image/svg+xml" href="./lamaris-logo.svg" />
     <title>Lamaris Admin</title>
+    <style>
+      .admin-brand .brand-mark {
+        width: 210px !important;
+        height: 62px !important;
+        flex: 0 0 210px !important;
+        border-radius: 8px !important;
+        background: #fff url('./lamaris-logo.svg') center / contain no-repeat !important;
+        color: transparent !important;
+        overflow: hidden !important;
+      }
+      .admin-brand .brand-mark svg { display: none !important; }
+      .admin-brand > span:last-child { display: none !important; }
+      .admin-login-brand .brand-mark {
+        width: 280px !important;
+        height: 82px !important;
+        flex-basis: 280px !important;
+        background-color: transparent !important;
+      }
+      @media (max-width: 800px) {
+        .admin-sidebar .admin-brand .brand-mark {
+          width: 54px !important;
+          height: 54px !important;
+          flex-basis: 54px !important;
+          border-radius: 8px !important;
+          background-size: 190px 55px !important;
+          background-position: left center !important;
+        }
+      }
+    </style>
   </head>
   <body>
     <div id="admin-root"></div>
