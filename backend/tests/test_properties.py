@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -14,7 +12,7 @@ import app.api.routes.properties as properties_route
 
 
 @pytest.fixture()
-def client(tmp_path):
+def client():
     engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},
@@ -37,7 +35,6 @@ def client(tmp_path):
 
     app.dependency_overrides[get_db] = override_db
     app.dependency_overrides[get_current_user] = lambda: admin
-    properties_route.settings.upload_dir = str(tmp_path)
 
     with TestClient(app) as test_client:
         yield test_client
@@ -107,13 +104,15 @@ def test_invalid_property_payload_is_rejected(client):
     assert response.status_code == 422
 
 
-def test_image_upload_is_persisted(client, tmp_path):
+def test_image_upload_is_persisted(client, monkeypatch):
     response = client.post("/api/properties", json=payload())
     assert response.status_code == 201
     property_id = response.json()["id"]
 
-    # Minimal valid PNG signature plus a small payload. The upload endpoint
-    # validates the file signature before persisting it.
+    async def fake_upload(public_id, data, content_type):
+        return f"https://res.cloudinary.com/demo/image/upload/{public_id}.png", public_id
+
+    monkeypatch.setattr(properties_route, "upload_image", fake_upload)
     png = b"\x89PNG\r\n\x1a\n" + b"test-image"
     response = client.post(
         f"/api/properties/{property_id}/images/upload",
@@ -122,10 +121,8 @@ def test_image_upload_is_persisted(client, tmp_path):
     assert response.status_code == 200
     images = response.json()["images"]
     assert len(images) == 1
-    assert images[0]["url"].startswith("/uploads/properties/")
-
-    stored = Path(tmp_path) / "properties" / str(property_id)
-    assert len(list(stored.glob("*.png"))) == 1
+    assert images[0]["url"].startswith("https://res.cloudinary.com/")
+    assert images[0]["storage_key"].startswith(f"lamaris/properties/{property_id}/")
 
 
 def test_invalid_image_signature_is_rejected(client):
