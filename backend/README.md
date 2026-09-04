@@ -6,6 +6,8 @@ FastAPI backend for the Lamaris Real Estate & Construction platform.
 
 `React/Vite frontend → FastAPI REST API → SQLAlchemy → PostgreSQL`
 
+Property media is stored in **Cloudinary**. The database stores the Cloudinary secure URL and public ID for each gallery image.
+
 The database schema is managed with **Alembic**. The API does not create or alter tables during application startup.
 
 ## Local setup
@@ -18,7 +20,7 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Set `DATABASE_URL` to a PostgreSQL database and generate a strong `JWT_SECRET`.
+Set `DATABASE_URL`, generate a strong `JWT_SECRET`, and configure the three Cloudinary environment variables.
 
 Apply the schema:
 
@@ -67,6 +69,7 @@ Current migrations:
 - `20260903_0001` — safe baseline for existing MVP databases
 - `20260903_0002` — property/image integrity constraints and indexes
 - `20260903_0003` — explicit user roles for admin authorization
+- `20260904_0004` — Cloudinary public ID storage for property images
 
 ## Property persistence
 
@@ -74,7 +77,7 @@ Core PostgreSQL tables:
 
 - `users` — authenticated admin accounts, roles and JWT token versions
 - `properties` — durable listings, lifecycle status, pricing/details and timestamps
-- `property_images` — ordered galleries linked to properties with cascading deletes
+- `property_images` — ordered galleries linked to properties with Cloudinary storage metadata
 - `enquiries` — website/property enquiries
 
 Property lifecycle:
@@ -90,21 +93,22 @@ Property management endpoints are admin-only. Public reads expose available list
 - `POST /api/properties` — admin create
 - `PATCH /api/properties/{id}` — admin update
 - `DELETE /api/properties/{id}` — admin archive (non-destructive)
-- `POST /api/properties/{id}/images` — admin attach an existing URL
-- `POST /api/properties/{id}/images/upload` — admin upload and persist an image
+- `POST /api/properties/{id}/images/upload` — admin upload and persist an image to Cloudinary
 - `POST /api/properties/{id}/images/reorder` — admin reorder gallery
-- `DELETE /api/properties/images/{image_id}` — admin remove an image
+- `DELETE /api/properties/images/{image_id}` — admin remove an image from Cloudinary and PostgreSQL
+
+Direct external image URL attachment is intentionally disabled so property galleries remain under application-controlled Cloudinary storage.
 
 Validation includes non-blank required fields, normalized lowercase slugs, supported status values, non-negative bedroom/room counts, image MIME/signature checks, a 10 MB image limit and a 30-image-per-property limit.
 
 ## Image storage
 
-Development uses the configured `UPLOAD_DIR` filesystem. Production uses the `property-images` Supabase Storage bucket through the server-only service-role key. Property objects use the `properties/{property_id}/{generated_filename}` namespace.
+Cloudinary is the production and application storage provider. Property images use the namespace `lamaris/properties/{property_id}/{generated_id}`. Each upload uses a unique public ID, `overwrite=false`, and stores the returned secure URL and public ID in PostgreSQL.
 
-The database stores the public object URL and gallery order. Uploads write to Storage before the database record is committed; if the database write fails, the uploaded object is cleaned up. Image deletion keeps the database transaction pending until the Storage deletion succeeds, so a Storage failure rolls the DB deletion back.
+The API validates image type and signature before upload. Uploads write to Cloudinary before the database record is committed; if the database write fails, the uploaded Cloudinary asset is deleted. Image deletion keeps the database transaction pending until the Cloudinary deletion succeeds, so a storage failure rolls the DB deletion back.
 
-The production configuration deliberately fails fast when `ENVIRONMENT=production` but `DATABASE_URL`, `JWT_SECRET`, `SUPABASE_URL`, or `SUPABASE_SERVICE_ROLE_KEY` is missing.
+Cloudinary credentials are server-side only and must never be exposed to the frontend.
 
 ## Production rule
 
-Do not put production database credentials, JWT secrets or storage credentials in Git. Configure them through deployment environment variables or a secrets manager.
+Do not put production database credentials, JWT secrets or Cloudinary credentials in Git. Configure them through deployment environment variables or a secrets manager.
