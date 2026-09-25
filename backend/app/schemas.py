@@ -12,7 +12,6 @@ class PropertyImageOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
     url: str
-    storage_key: str | None = None
     alt_text: str | None = None
     sort_order: int
 
@@ -67,6 +66,27 @@ class PropertyCreate(BaseModel):
     @classmethod
     def validate_featured(cls, value: bool) -> bool:
         return bool(value)
+
+
+class PropertyPublicOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    title: str
+    slug: str
+    property_type: str
+    location: str
+    price: str | None = None
+    bedrooms: int | None = None
+    rooms: int | None = None
+    stand_size: str | None = None
+    description: str | None = None
+    features: str | None = None
+    paperwork_status: str | None = None
+    status: str
+    featured: bool
+    created_at: datetime
+    updated_at: datetime | None = None
+    images: list[PropertyImageOut] = Field(default_factory=list)
 
 
 class PropertyOut(PropertyCreate):
