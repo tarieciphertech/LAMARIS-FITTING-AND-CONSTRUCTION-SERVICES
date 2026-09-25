@@ -7,7 +7,8 @@ const rootDir = fileURLToPath(new URL('.', import.meta.url))
 
 export default defineConfig({
   plugins: [react()],
-  base: '/LAMARIS-FITTING-AND-CONSTRUCTION-SERVICES/',
+  // LamarIS uses a custom subdomain, so assets must resolve from the domain root.
+  base: '/',
   build: {
     rollupOptions: {
       input: {
