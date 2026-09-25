@@ -15,7 +15,7 @@ import {
   X,
 } from 'lucide-react'
 import { constructionServices, EMAIL, images, PHONE, PHONE_2, propertyTypes, WHATSAPP } from './data'
-import { fetchProperties, imageUrl } from './api'
+import { fetchProperties, fetchProperty, imageUrl, submitEnquiry } from './api'
 
 const whatsappUrl = (message = 'Hello Lamaris, I would like to enquire about a property.') =>
   `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(message)}`
@@ -32,6 +32,7 @@ function App() {
   const [properties, setProperties] = useState([])
   const [propertiesLoading, setPropertiesLoading] = useState(true)
   const [propertiesError, setPropertiesError] = useState('')
+  const [selectedSlug, setSelectedSlug] = useState(null)
 
   useEffect(() => {
     let active = true
@@ -87,7 +88,7 @@ function App() {
 
         <section className="search-panel-wrap"><div className="container"><div className="search-panel"><div className="search-title"><Search size={21} /><div><strong>Find your next property</strong><small>Search Lamaris listings by type and location</small></div></div><select value={filters.type} onChange={(e) => setFilters({ ...filters, type: e.target.value })}><option value="">All property types</option>{propertyTypes.map((type) => <option key={type} value={type}>{type}</option>)}</select><input value={filters.location} onChange={(e) => setFilters({ ...filters, location: e.target.value })} placeholder="Location" /><a className="button primary" href="#properties">Search <ArrowRight size={17} /></a></div></div></section>
 
-        <section id="properties" className="section"><div className="container"><div className="section-heading"><div><span className="kicker">PROPERTY OPPORTUNITIES</span><h2>Available Properties</h2></div><a href="#contact" className="text-link">Need something specific? <ChevronRight size={17} /></a></div>{propertiesLoading && <div className="empty-state">Loading current listings…</div>}{propertiesError && <div className="empty-state">We couldn't load the live listings right now. <a href={whatsappUrl()} target="_blank" rel="noreferrer">Ask LamarIS on WhatsApp.</a></div>}{!propertiesLoading && !propertiesError && <div className="property-grid">{filteredProperties.map((property) => <PropertyCard key={property.id} property={property} />)}</div>}{!propertiesLoading && !propertiesError && !filteredProperties.length && <div className="empty-state">No listings match those filters yet. <a href={whatsappUrl()} target="_blank" rel="noreferrer">Ask LamarIS directly.</a></div>}</div></section>
+        <section id="properties" className="section"><div className="container"><div className="section-heading"><div><span className="kicker">PROPERTY OPPORTUNITIES</span><h2>Available Properties</h2></div><a href="#contact" className="text-link">Need something specific? <ChevronRight size={17} /></a></div>{propertiesLoading && <div className="empty-state">Loading current listings…</div>}{propertiesError && <div className="empty-state">We couldn't load the live listings right now. <a href={whatsappUrl()} target="_blank" rel="noreferrer">Ask LamarIS on WhatsApp.</a></div>}{!propertiesLoading && !propertiesError && <div className="property-grid">{filteredProperties.map((property) => <PropertyCard key={property.id} property={property} onDetails={() => setSelectedSlug(property.slug)} />)}</div>}{!propertiesLoading && !propertiesError && !filteredProperties.length && <div className="empty-state">No listings match those filters yet. <a href={whatsappUrl()} target="_blank" rel="noreferrer">Ask LamarIS directly.</a></div>}</div></section>
 
         <section id="services" className="section soft-section"><div className="container"><div className="section-heading centered"><span className="kicker">WHAT WE DO</span><h2>More Than Property Sales</h2><p>One trusted team for property opportunities and the work that turns them into valuable spaces.</p></div><div className="service-layout"><article className="service-feature"><div className="service-icon"><Home /></div><span className="kicker">REAL ESTATE</span><h3>Find the right property</h3><p>We help first-time buyers, investors, land buyers, companies and developers find property based on their requirements and budget.</p><ul><li>Houses &amp; residential stands</li><li>Commercial &amp; industrial property</li><li>Property sourcing for buyers</li><li>Viewing coordination</li></ul><a href="#properties" className="text-link">View properties <ArrowRight size={16} /></a></article><article className="service-feature dark-card"><div className="service-icon"><Hammer /></div><span className="kicker">CONSTRUCTION &amp; FITTING</span><h3>From property to finished space</h3><p>Already have a property? LamarIS can help turn your plans into reality with construction, renovations and specialist fitting services.</p><div className="service-tags">{constructionServices.map((service) => <span key={service}>{service}</span>)}</div><a href={whatsappUrl('Hello LamarIS, I would like to discuss a construction project.')} target="_blank" rel="noreferrer" className="text-link">Discuss a project <ArrowRight size={16} /></a></article></div></div></section>
 
@@ -100,15 +101,74 @@ function App() {
         <section id="contact" className="section contact-section"><div className="container"><div className="section-heading centered"><span className="kicker">GET IN TOUCH</span><h2>Let's talk about your next move.</h2></div><div className="contact-grid"><a href={whatsappUrl()} target="_blank" rel="noreferrer"><MessageCircle /><span><small>WhatsApp</small><strong>0778850189</strong></span></a><a href={`tel:${PHONE}`}><Phone /><span><small>Call us</small><strong>{PHONE} / {PHONE_2}</strong></span></a><a href={`mailto:${EMAIL}`}><Mail /><span><small>Email</small><strong>{EMAIL}</strong></span></a><div><MapPin /><span><small>Service area</small><strong>Masvingo City &amp; Beyond</strong></span></div></div></div></section>
       </main>
 
+      {selectedSlug && <PropertyDetail slug={selectedSlug} onClose={() => setSelectedSlug(null)} />}
+
       <footer><div className="container footer-inner"><Brand compact /><p>© 2026 LamarIS Fitting and Construction Services. All rights reserved.</p><p className="disclaimer">Prices subject to change. Viewing by appointment.</p></div></footer>
     </div>
   )
 }
 
-function PropertyCard({ property }) {
+function PropertyDetail({ slug, onClose }) {
+  const [property, setProperty] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [form, setForm] = useState({ name: '', phone: '', email: '', message: '' })
+  const [sending, setSending] = useState(false)
+  const [sent, setSent] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    setLoading(true); setError(''); setSent(false)
+    fetchProperty(slug).then(item => { if (active) setProperty(item) })
+      .catch(err => { if (active) setError(err.message || 'Unable to load property.') })
+      .finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [slug])
+
+  useEffect(() => {
+    const onKey = e => e.key === 'Escape' && onClose()
+    document.addEventListener('keydown', onKey)
+    document.body.style.overflow = 'hidden'
+    return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = '' }
+  }, [onClose])
+
+  async function send(event) {
+    event.preventDefault(); setSending(true); setError('')
+    try {
+      await submitEnquiry({ ...form, property_id: property.id })
+      setSent(true); setForm({ name: '', phone: '', email: '', message: '' })
+    } catch (err) { setError(err.message || 'Unable to send enquiry.') }
+    finally { setSending(false) }
+  }
+
+  const photos = property?.images?.slice().sort((a,b) => a.sort_order - b.sort_order) || []
+  return <div className="detail-backdrop" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+    <div className="detail-modal" role="dialog" aria-modal="true" aria-label="Property details">
+      <button className="detail-close" onClick={onClose} aria-label="Close"><X size={20}/></button>
+      {loading && <div className="detail-loading">Loading property details…</div>}
+      {error && !property && <div className="empty-state detail-error">{error}</div>}
+      {property && <div className="detail-content">
+        <div className="detail-gallery">{photos.length ? photos.map((photo, i) => <img key={photo.id} src={imageUrl(photo.url)} alt={photo.alt_text || property.title} className={i === 0 ? 'detail-main-image' : ''}/>) : <div className="property-image-placeholder"><Home size={42}/></div>}</div>
+        <div className="detail-info">
+          <span className="kicker">{property.property_type}</span><h2>{property.title}</h2><div className="location"><MapPin size={16}/> {property.location}</div>
+          <div className="detail-price">{property.price || 'Price on enquiry'}</div>
+          <div className="detail-facts">{property.bedrooms != null && <span><strong>{property.bedrooms}</strong> bedrooms</span>}{property.rooms != null && <span><strong>{property.rooms}</strong> rooms</span>}{property.stand_size && <span><strong>{property.stand_size}</strong> stand</span>}</div>
+          {property.description && <p>{property.description}</p>}
+          {property.features && <div className="detail-block"><strong>Features</strong><p>{property.features}</p></div>}
+          {property.paperwork_status && <div className="detail-block"><strong>Paperwork</strong><p>{property.paperwork_status}</p></div>}
+          <div className="detail-enquiry"><span className="kicker">PROPERTY ENQUIRY</span><h3>Interested in this property?</h3>
+            {sent ? <div className="admin-alert success">Thanks. Your enquiry has been sent to LamarIS. We'll get back to you shortly.</div> : <form onSubmit={send}><div className="detail-form-grid"><input required minLength="2" placeholder="Your name" value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/><input required minLength="5" placeholder="Phone number" value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})}/></div><input type="email" placeholder="Email (optional)" value={form.email} onChange={e=>setForm({...form,email:e.target.value})}/><textarea required minLength="2" rows="3" placeholder="Tell us what you'd like to know" value={form.message} onChange={e=>setForm({...form,message:e.target.value})}/>{error && <div className="detail-form-error">{error}</div>}<button className="button primary" disabled={sending}>{sending ? 'Sending…' : 'Send enquiry'}</button></form>}
+          </div>
+        </div>
+      </div>}
+    </div>
+  </div>
+}
+
+function PropertyCard({ property, onDetails }) {
   const image = property.images?.slice().sort((a, b) => a.sort_order - b.sort_order)[0]
   const message = `Hello LamarIS, I'm interested in the ${property.title} in ${property.location} listed on your website. Is it still available?`
-  return <article className="property-card"><div className="property-image">{image ? <img src={imageUrl(image.url)} alt={image.alt_text || property.title} /> : <div className="property-image-placeholder"><Home size={34} /></div>}<span>{property.status}</span></div><div className="property-body"><small>{property.property_type}</small><h3>{property.title}</h3><div className="location"><MapPin size={15} /> {property.location}</div><div className="property-meta"><span><strong>{property.price || 'Price on enquiry'}</strong></span>{property.bedrooms != null && <span>{property.bedrooms} bedrooms</span>}{property.stand_size && <span>{property.stand_size}</span>}</div><div className="property-actions"><a href={whatsappUrl(message)} target="_blank" rel="noreferrer" className="button primary"><MessageCircle size={16} /> Enquire</a><a href={whatsappUrl(message)} target="_blank" rel="noreferrer" className="details-link">Ask for details <ChevronRight size={16} /></a></div></div></article>
+  return <article className="property-card"><div className="property-image">{image ? <img src={imageUrl(image.url)} alt={image.alt_text || property.title} /> : <div className="property-image-placeholder"><Home size={34} /></div>}<span>{property.status}</span></div><div className="property-body"><small>{property.property_type}</small><h3>{property.title}</h3><div className="location"><MapPin size={15} /> {property.location}</div><div className="property-meta"><span><strong>{property.price || 'Price on enquiry'}</strong></span>{property.bedrooms != null && <span>{property.bedrooms} bedrooms</span>}{property.stand_size && <span>{property.stand_size}</span>}</div><div className="property-actions"><a href={whatsappUrl(message)} target="_blank" rel="noreferrer" className="button primary"><MessageCircle size={16} /> Enquire</a><button type="button" onClick={onDetails} className="details-link">View details <ChevronRight size={16} /></button></div></div></article>
 }
 
 export default App
