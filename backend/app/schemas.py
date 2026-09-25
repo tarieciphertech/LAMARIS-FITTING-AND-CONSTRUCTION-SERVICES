@@ -14,6 +14,15 @@ class PropertyImageOut(BaseModel):
     url: str
     alt_text: str | None = None
     sort_order: int
+    storage_key: str | None = None
+
+
+class PropertyPublicImageOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    url: str
+    alt_text: str | None = None
+    sort_order: int
 
 
 class PropertyCreate(BaseModel):
@@ -86,7 +95,7 @@ class PropertyPublicOut(BaseModel):
     featured: bool
     created_at: datetime
     updated_at: datetime | None = None
-    images: list[PropertyImageOut] = Field(default_factory=list)
+    images: list[PropertyPublicImageOut] = Field(default_factory=list)
 
 
 class PropertyOut(PropertyCreate):
