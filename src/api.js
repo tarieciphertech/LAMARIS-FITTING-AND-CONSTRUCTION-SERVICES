@@ -26,8 +26,16 @@ export function fetchProperties(params = {}) {
   return request(`/api/properties${suffix}`)
 }
 
-export function fetchProperty(id) {
-  return request(`/api/properties/${encodeURIComponent(id)}`)
+export function fetchProperty(slug) {
+  return request(`/api/properties/public/${encodeURIComponent(slug)}`)
+}
+
+export function submitEnquiry(payload) {
+  return request('/api/enquiries', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
 }
 
 export { API_URL }
