@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://lamaris:change-me@localhost:5432/lamaris"
     jwt_secret: str = "change-me-in-production"
     access_token_expire_minutes: int = 60
-    cors_origins: str = "http://localhost:5173,https://tarieciphertech.github.io"
+    cors_origins: str = "https://lamaris.cyphertech.co.zw,https://tarieciphertech.github.io,http://localhost:5173,http://127.0.0.1:5173"
 
     cloudinary_cloud_name: str = ""
     cloudinary_api_key: str = ""
