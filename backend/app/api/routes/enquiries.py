@@ -12,8 +12,10 @@ router = APIRouter(prefix="/enquiries", tags=["enquiries"])
 
 @router.post("", response_model=EnquiryOut, status_code=201)
 def create_enquiry(payload: EnquiryCreate, db: Session = Depends(get_db)):
-    if payload.property_id and not db.get(Property, payload.property_id):
-        raise HTTPException(status_code=404, detail="Property not found")
+    if payload.property_id:
+        property = db.get(Property, payload.property_id)
+        if not property or property.status != "available":
+            raise HTTPException(status_code=404, detail="Available property not found")
     item = Enquiry(**payload.model_dump())
     db.add(item)
     db.commit()
