@@ -4,7 +4,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.core.security import get_current_user
+from app.core.security import get_current_admin, get_current_user
 from app.db.models import Property, User
 from app.db.session import Base, get_db
 from app.main import app
@@ -35,6 +35,7 @@ def client():
 
     app.dependency_overrides[get_db] = override_db
     app.dependency_overrides[get_current_user] = lambda: admin
+    app.dependency_overrides[get_current_admin] = lambda: admin
 
     with TestClient(app) as test_client:
         yield test_client
@@ -88,6 +89,20 @@ def test_create_read_update_and_archive_property(client):
     assert response.status_code == 200
     assert response.json()["status"] == "archived"
     assert response.json()["featured"] is False
+
+
+def test_public_property_is_available_by_slug(client):
+    response = client.post("/api/properties", json=payload())
+    assert response.status_code == 201
+    public = client.get("/api/properties/public/modern-family-home")
+    assert public.status_code == 200
+    body = public.json()
+    assert body["slug"] == "modern-family-home"
+    assert "storage_key" not in body["images"][0] if body["images"] else True
+
+    response = client.patch("/api/properties/1", json={**payload(), "status": "sold"})
+    assert response.status_code == 200
+    assert client.get("/api/properties/public/modern-family-home").status_code == 404
 
 
 def test_duplicate_slug_is_rejected(client):
