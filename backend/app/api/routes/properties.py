@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.core.security import get_current_admin
 from app.db.models import Property, PropertyImage, PropertyStatus, User
 from app.db.session import get_db
-from app.schemas import PropertyCreate, PropertyOut
+from app.schemas import PropertyCreate, PropertyOut, PropertyPublicOut
 from app.services.storage import StorageError, delete_image, upload_image
 
 router = APIRouter(prefix="/properties", tags=["properties"])
@@ -82,8 +82,16 @@ async def delete_image_endpoint(image_id: int, db: Session = Depends(get_db), _:
         raise
 
 
+@router.get("/public/{slug}", response_model=PropertyPublicOut)
+def get_public_property(slug: str, db: Session = Depends(get_db)):
+    item = db.scalar(select(Property).options(selectinload(Property.images)).where(Property.slug == slug, Property.status == PropertyStatus.available))
+    if not item:
+        raise HTTPException(status_code=404, detail="Available property not found")
+    return item
+
+
 @router.get("/{property_id}", response_model=PropertyOut)
-def get_property(property_id: int, db: Session = Depends(get_db)):
+def get_property(property_id: int, db: Session = Depends(get_db), _: User = Depends(get_current_admin)):
     item = db.scalar(select(Property).options(selectinload(Property.images)).where(Property.id == property_id))
     if not item:
         raise HTTPException(status_code=404, detail="Property not found")
