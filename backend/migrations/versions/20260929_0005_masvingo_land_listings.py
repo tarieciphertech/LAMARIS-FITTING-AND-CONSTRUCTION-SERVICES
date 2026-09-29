@@ -146,7 +146,7 @@ def upgrade() -> None:
         sa.column("description", sa.Text),
         sa.column("features", sa.Text),
         sa.column("paperwork_status", sa.String),
-        sa.column("status", sa.String),
+        sa.column("status", sa.Enum("draft", "available", "sold", "archived", name="propertystatus", create_type=False)),
         sa.column("featured", sa.Boolean),
     )
 
