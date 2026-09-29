@@ -41,6 +41,7 @@ export const adminApi = {
   },
   attachImage: (propertyId, url, altText = '') => request(`/api/properties/${propertyId}/images?url=${encodeURIComponent(url)}${altText ? `&alt_text=${encodeURIComponent(altText)}` : ''}`, { method: 'POST' }),
   deleteImage: (imageId) => request(`/api/properties/images/${imageId}`, { method: 'DELETE' }),
+  updateImage: (imageId, altText) => request(`/api/properties/images/${imageId}?alt_text=${encodeURIComponent(altText || '')}`, { method: 'PATCH' }),
   reorderImages: (propertyId, imageIds) => request(`/api/properties/${propertyId}/images/reorder`, { method: 'POST', body: JSON.stringify(imageIds) }),
   enquiries: () => request('/api/enquiries'),
 }
