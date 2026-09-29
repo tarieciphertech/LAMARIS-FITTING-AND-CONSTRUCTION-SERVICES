@@ -82,6 +82,16 @@ async def delete_image_endpoint(image_id: int, db: Session = Depends(get_db), _:
         raise
 
 
+@router.patch("/images/{image_id}", response_model=PropertyOut)
+def update_image(image_id: int, alt_text: str | None = Query(default=None, max_length=255), db: Session = Depends(get_db), _: User = Depends(get_current_admin)):
+    image = db.get(PropertyImage, image_id)
+    if not image:
+        raise HTTPException(status_code=404, detail="Property image not found")
+    image.alt_text = alt_text.strip() if alt_text and alt_text.strip() else None
+    db.commit()
+    item = db.scalar(select(Property).options(selectinload(Property.images)).where(Property.id == image.property_id))
+    return item
+
 @router.get("/public/{slug}", response_model=PropertyPublicOut)
 def get_public_property(slug: str, db: Session = Depends(get_db)):
     item = db.scalar(select(Property).options(selectinload(Property.images)).where(Property.slug == slug, Property.status == PropertyStatus.available))
