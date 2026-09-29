@@ -141,6 +141,8 @@ def upgrade() -> None:
         sa.column("location", sa.String),
         sa.column("price", sa.String),
         sa.column("stand_size", sa.String),
+        sa.column("bedrooms", sa.Integer),
+        sa.column("rooms", sa.Integer),
         sa.column("description", sa.Text),
         sa.column("features", sa.Text),
         sa.column("paperwork_status", sa.String),
