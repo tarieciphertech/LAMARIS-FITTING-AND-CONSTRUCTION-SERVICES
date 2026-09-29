@@ -112,6 +112,8 @@ function App() {
 
 function PropertyDetail({ slug, onClose }) {
   const [property, setProperty] = useState(null)
+  const [activePhoto, setActivePhoto] = useState(0)
+  const [lightbox, setLightbox] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [form, setForm] = useState({ name: '', phone: '', email: '', message: '' })
@@ -120,7 +122,7 @@ function PropertyDetail({ slug, onClose }) {
 
   useEffect(() => {
     let active = true
-    setLoading(true); setError(''); setSent(false)
+    setLoading(true); setError(''); setSent(false); setActivePhoto(0); setLightbox(false)
     fetchProperty(slug).then(item => { if (active) setProperty(item) })
       .catch(err => { if (active) setError(err.message || 'Unable to load property.') })
       .finally(() => { if (active) setLoading(false) })
@@ -128,11 +130,15 @@ function PropertyDetail({ slug, onClose }) {
   }, [slug])
 
   useEffect(() => {
-    const onKey = e => e.key === 'Escape' && onClose()
+    const onKey = e => {
+      if (e.key !== 'Escape') return
+      if (lightbox) setLightbox(false)
+      else onClose()
+    }
     document.addEventListener('keydown', onKey)
     document.body.style.overflow = 'hidden'
     return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = '' }
-  }, [onClose])
+  }, [onClose, lightbox])
 
   async function send(event) {
     event.preventDefault(); setSending(true); setError('')
@@ -150,7 +156,7 @@ function PropertyDetail({ slug, onClose }) {
       {loading && <div className="detail-loading">Loading property details…</div>}
       {error && !property && <div className="empty-state detail-error">{error}</div>}
       {property && <div className="detail-content">
-        <div className="detail-gallery">{photos.length ? photos.map((photo, i) => <img key={photo.id} src={imageUrl(photo.url)} alt={photo.alt_text || property.title} className={i === 0 ? 'detail-main-image' : ''}/>) : <div className="property-image-placeholder"><Home size={42}/></div>}</div>
+        <div className="detail-gallery">{photos.length ? <><button type="button" className="detail-main-button" onClick={() => setLightbox(true)} aria-label="Open property photo full screen"><img className="detail-main-image" src={imageUrl(photos[activePhoto]?.url)} alt={photos[activePhoto]?.alt_text || property.title}/></button><div className="detail-thumbs">{photos.map((photo,i) => <button type="button" key={photo.id} className={i === activePhoto ? 'active' : ''} onClick={() => setActivePhoto(i)}><img src={imageUrl(photo.url)} alt={photo.alt_text || property.title + ' photo ' + (i + 1)}/></button>)}</div></> : <div className="property-image-placeholder"><Home size={42}/></div>}</div>{lightbox && photos.length > 0 && <div className="photo-lightbox" onMouseDown={e => e.target === e.currentTarget && setLightbox(false)}><button type="button" className="photo-lightbox-close" onClick={() => setLightbox(false)} aria-label="Close photo viewer"><X size={22}/></button><img src={imageUrl(photos[activePhoto]?.url)} alt={photos[activePhoto]?.alt_text || property.title}/><div className="photo-lightbox-count">{activePhoto + 1} / {photos.length}</div></div>}
         <div className="detail-info">
           <span className="kicker">{property.property_type}</span><h2>{property.title}</h2><div className="location"><MapPin size={16}/> {property.location}</div>
           <div className="detail-price">{property.price || 'Price on enquiry'}</div>
