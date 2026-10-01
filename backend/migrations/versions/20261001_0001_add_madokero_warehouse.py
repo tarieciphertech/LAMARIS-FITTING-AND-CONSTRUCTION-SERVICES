@@ -36,21 +36,21 @@ def upgrade():
                 featured
             )
             SELECT
-                :title,
-                :slug,
-                :property_type,
-                :location,
-                :price,
+                CAST(:title AS VARCHAR(255)),
+                CAST(:slug AS VARCHAR(255)),
+                CAST(:property_type AS VARCHAR(100)),
+                CAST(:location AS VARCHAR(255)),
+                CAST(:price AS VARCHAR(100)),
                 NULL,
                 NULL,
-                :stand_size,
-                :description,
-                :features,
+                CAST(:stand_size AS VARCHAR(100)),
+                CAST(:description AS TEXT),
+                CAST(:features AS TEXT),
                 NULL,
                 'available',
                 TRUE
             WHERE NOT EXISTS (
-                SELECT 1 FROM properties WHERE slug = :slug
+                SELECT 1 FROM properties WHERE slug = CAST(:slug AS VARCHAR(255))
             )
             """
         ),
