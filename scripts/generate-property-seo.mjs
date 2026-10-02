@@ -7,8 +7,18 @@ const BUSINESS_NAME = 'LamarIS Fitting and Construction Services'
 const DEFAULT_IMAGE = `${SITE_URL}/lamaris-logo.svg`
 const HUBS = [
   ['/property-for-sale-masvingo/', 'daily'],
+  ['/houses-for-sale-masvingo/', 'daily'],
+  ['/stands-for-sale-masvingo/', 'daily'],
   ['/land-for-sale-masvingo/', 'daily'],
+  ['/commercial-property-masvingo/', 'weekly'],
   ['/construction-services-masvingo/', 'weekly'],
+  ['/areas/zimre-park/', 'weekly'],
+  ['/areas/zexcom/', 'weekly'],
+  ['/areas/rujeko/', 'weekly'],
+  ['/areas/victoria-ranch/', 'weekly'],
+  ['/areas/kmp/', 'weekly'],
+  ['/areas/pambudzi/', 'weekly'],
+  ['/areas/westview-industrial/', 'weekly'],
   ['/services/construction/', 'monthly'],
   ['/services/renovations/', 'monthly'],
   ['/services/ceilings/', 'monthly'],
