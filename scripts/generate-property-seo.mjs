@@ -3,6 +3,8 @@ import { join } from 'node:path'
 
 const API_URL = (process.env.VITE_API_URL || 'https://lamaris-api.onrender.com').replace(/\/$/, '')
 const SITE_URL = 'https://lamaris.cyphertech.co.zw'
+const BUSINESS_NAME = 'LamarIS Fitting and Construction Services'
+const DEFAULT_IMAGE = `${SITE_URL}/lamaris-logo.svg`
 const HUBS = [
   ['/property-for-sale-masvingo/', 'weekly'],
   ['/land-for-sale-masvingo/', 'weekly'],
@@ -52,7 +54,7 @@ function descriptionFor(property) {
     property.price,
   ].filter(Boolean)
   const extra = stripHtml(property.description || property.features || '')
-  return (`${property.title} in ${property.location} — ${facts.join(', ')}. ${extra} Enquire with LamarIS Fitting and Construction Services in Masvingo.`).slice(0, 300)
+  return (`${property.title} in ${property.location} — ${facts.join(', ')}. ${extra} View details and enquire with LamarIS in Masvingo, Zimbabwe.`).slice(0, 155)
 }
 
 function numericPrice(price) {
@@ -63,7 +65,7 @@ function numericPrice(price) {
 
 function imageFor(property) {
   const image = [...(property.images || [])].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))[0]
-  return image?.url || `${SITE_URL}/lamaris-logo.svg`
+  return image?.url || DEFAULT_IMAGE
 }
 
 function pageFor(property) {
@@ -93,7 +95,8 @@ function pageFor(property) {
     url,
     image: [image],
     dateModified: updated,
-    seller: { '@type': 'RealEstateAgent', name: 'LamarIS Fitting and Construction Services', url: SITE_URL },
+    seller: { '@type': 'RealEstateAgent', name: BUSINESS_NAME, url: SITE_URL, telephone: '+263778850189' },
+    datePosted: property.created_at || undefined,
     address: { '@type': 'PostalAddress', addressLocality: property.location, addressCountry: 'ZW' },
     mainEntity: { '@type': 'Thing', name: property.title },
   }
@@ -128,10 +131,13 @@ function pageFor(property) {
 <meta property="og:description" content="${escapeHtml(description)}">
 <meta property="og:url" content="${url}">
 <meta property="og:image" content="${escapeHtml(image)}">
+<meta property="og:image:alt" content="${escapeHtml(property.title)} in ${escapeHtml(property.location)}">
+<meta property="og:site_name" content="LamarIS Fitting and Construction Services">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="${escapeHtml(property.title)} | LamarIS">
 <meta name="twitter:description" content="${escapeHtml(description)}">
 <meta name="twitter:image" content="${escapeHtml(image)}">
+<meta name="twitter:image:alt" content="${escapeHtml(property.title)} in ${escapeHtml(property.location)}">
 <script type="application/ld+json">${JSON.stringify(schema)}</script>
 <script type="application/ld+json">${JSON.stringify(breadcrumb)}</script>
 <style>
@@ -142,6 +148,7 @@ body{margin:0}.wrap{max-width:920px;margin:auto;padding:28px 20px 70px}.brand{fo
 <body>
 <main class="wrap">
 <a class="brand" href="/">LAMARIS FITTING AND CONSTRUCTION SERVICES</a>
+<nav aria-label="Primary"><a href="/property-for-sale-masvingo/">Property for Sale</a> · <a href="/land-for-sale-masvingo/">Land for Sale</a> · <a href="/construction-services-masvingo/">Construction Services</a></nav>
 <nav class="crumbs"><a href="/">Home</a> / <a href="/property-for-sale-masvingo/">Properties</a> / ${escapeHtml(property.title)}</nav>
 <section class="hero">
 <div><img src="${escapeHtml(image)}" alt="${escapeHtml(property.title)} in ${escapeHtml(property.location)}"></div>
