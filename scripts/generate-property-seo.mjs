@@ -6,9 +6,17 @@ const SITE_URL = 'https://lamaris.cyphertech.co.zw'
 const BUSINESS_NAME = 'LamarIS Fitting and Construction Services'
 const DEFAULT_IMAGE = `${SITE_URL}/lamaris-logo.svg`
 const HUBS = [
-  ['/property-for-sale-masvingo/', 'weekly'],
-  ['/land-for-sale-masvingo/', 'weekly'],
-  ['/construction-services-masvingo/', 'monthly'],
+  ['/property-for-sale-masvingo/', 'daily'],
+  ['/land-for-sale-masvingo/', 'daily'],
+  ['/construction-services-masvingo/', 'weekly'],
+  ['/services/construction/', 'monthly'],
+  ['/services/renovations/', 'monthly'],
+  ['/services/ceilings/', 'monthly'],
+  ['/services/skimming/', 'monthly'],
+  ['/services/painting/', 'monthly'],
+  ['/services/fencing-welding/', 'monthly'],
+  ['/services/plumbing/', 'monthly'],
+  ['/services/plan-drawings/', 'monthly'],
 ]
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
