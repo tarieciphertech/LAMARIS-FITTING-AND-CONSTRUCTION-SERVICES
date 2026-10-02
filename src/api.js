@@ -2,7 +2,7 @@ const API_URL = (import.meta.env.VITE_API_URL || 'https://lamaris-api.onrender.c
 
 async function request(path, options = {}) {
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 10000)
+  const timeout = setTimeout(() => controller.abort(), options.timeout || 10000)
   let response
   try {
     response = await fetch(`${API_URL}${path}`, { ...options, signal: options.signal || controller.signal })
@@ -12,12 +12,10 @@ async function request(path, options = {}) {
   } finally {
     clearTimeout(timeout)
   }
+
   const contentType = response.headers.get('content-type') || ''
   const data = contentType.includes('application/json') ? await response.json() : await response.text()
-
-  if (!response.ok) {
-    throw new Error(typeof data === 'string' ? data : data.detail || 'Request failed')
-  }
+  if (!response.ok) throw new Error(typeof data === 'string' ? data : data.detail || 'Request failed')
   return data
 }
 
@@ -28,7 +26,22 @@ export function imageUrl(url) {
 }
 
 const PROPERTY_CACHE_KEY = 'lamaris:available-properties:v1'
-const PROPERTY_CACHE_TTL = 5 * 60 * 1000
+const PROPERTY_CACHE_TTL = 30 * 60 * 1000
+const PROPERTY_STALE_TTL = 7 * 24 * 60 * 60 * 1000
+
+function readPropertyCache() {
+  try {
+    const cached = JSON.parse(sessionStorage.getItem(PROPERTY_CACHE_KEY) || 'null')
+    if (cached && Array.isArray(cached.data) && cached.timestamp) return cached
+  } catch {}
+  return null
+}
+
+function writePropertyCache(data) {
+  try {
+    sessionStorage.setItem(PROPERTY_CACHE_KEY, JSON.stringify({ timestamp: Date.now(), data }))
+  } catch {}
+}
 
 export function fetchProperties(params = {}) {
   const query = new URLSearchParams()
@@ -37,28 +50,21 @@ export function fetchProperties(params = {}) {
   })
   const suffix = query.toString() ? `?${query}` : ''
   const isAvailable = params.status === 'available' && Object.keys(params).length === 1
+  const cached = isAvailable ? readPropertyCache() : null
 
-  if (isAvailable) {
-    try {
-      const cached = JSON.parse(sessionStorage.getItem(PROPERTY_CACHE_KEY) || 'null')
-      if (cached && Date.now() - cached.timestamp < PROPERTY_CACHE_TTL && Array.isArray(cached.data)) {
-        return Promise.resolve(cached.data)
-      }
-    } catch {
-      // Ignore unavailable/corrupt browser storage and fetch normally.
-    }
+  if (cached && Date.now() - cached.timestamp < PROPERTY_CACHE_TTL) {
+    return Promise.resolve(cached.data)
   }
 
-  return request(`/api/properties${suffix}`).then((data) => {
-    if (isAvailable && Array.isArray(data)) {
-      try {
-        sessionStorage.setItem(PROPERTY_CACHE_KEY, JSON.stringify({ timestamp: Date.now(), data }))
-      } catch {
-        // Storage quota/privacy mode can prevent caching; the live response still works.
-      }
-    }
-    return data
-  })
+  return request(`/api/properties${suffix}`)
+    .then((data) => {
+      if (isAvailable && Array.isArray(data)) writePropertyCache(data)
+      return data
+    })
+    .catch((error) => {
+      if (isAvailable && cached && Date.now() - cached.timestamp < PROPERTY_STALE_TTL) return cached.data
+      throw error
+    })
 }
 
 export function fetchProperty(slug) {
