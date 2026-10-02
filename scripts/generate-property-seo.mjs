@@ -12,7 +12,6 @@ const HUBS = [
   ['/land-for-sale-masvingo/', 'daily'],
   ['/commercial-property-masvingo/', 'weekly'],
   ['/construction-services-masvingo/', 'weekly'],
-  ['/areas/zimre-park/', 'weekly'],
   ['/areas/zexcom/', 'weekly'],
   ['/areas/rujeko/', 'weekly'],
   ['/areas/victoria-ranch/', 'weekly'],
