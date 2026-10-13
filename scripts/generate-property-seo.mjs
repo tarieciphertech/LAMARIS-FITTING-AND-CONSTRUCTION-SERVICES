@@ -76,7 +76,7 @@ function descriptionFor(property) {
 
 function numericPrice(price) {
   if (!price) return null
-  const match = String(price).replace(/,/g, '').match(/(?:US\\$|USD\\$|\\$)?\\s*(\\d+(?:\\.\\d+)?)/i)
+  const match = String(price).replace(/,/g, '').match(/(?:US\$|USD\$|\$)?\s*(\d+(?:\.\d+)?)/i)
   return match ? Number(match[1]) : null
 }
 
