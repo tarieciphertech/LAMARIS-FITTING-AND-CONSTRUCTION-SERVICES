@@ -199,7 +199,15 @@ ${property.features ? `<h2>Features</h2><p>${escapeHtml(stripHtml(property.featu
 
 async function main() {
   const statuses = ['available', 'sold']
-  const responses = await Promise.all(statuses.map((status) => fetchJson(`${API_URL}/api/properties?status=${status}&limit=100`)))
+  let responses
+  try {
+    responses = await Promise.all(statuses.map((status) => fetchJson(`${API_URL}/api/properties?status=${status}&limit=100`)))
+  } catch (error) {
+    // Keep the last known-good static property pages and sitemap if the API is asleep or unavailable.
+    // A temporary API outage must not block deployment of the rest of the website.
+    console.warn(`Property API unavailable (${error.message}); preserving existing SEO pages and sitemap.`)
+    return
+  }
   const byId = new Map()
   responses.flat().forEach((property) => byId.set(property.id, property))
   const properties = [...byId.values()].filter((property) => property.slug)
