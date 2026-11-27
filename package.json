@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "seo:generate": "node scripts/generate-property-seo.mjs"
+    "seo:generate": "node scripts/generate-property-seo.mjs && node scripts/generate-hub-seo.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
